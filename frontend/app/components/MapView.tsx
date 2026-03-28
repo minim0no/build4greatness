@@ -26,7 +26,7 @@ export default function MapView() {
   }, []);
 
   const handleSimulate = useCallback(
-    (params: { severity: number; rainfall_mm: number; water_source: string }) => {
+    (params: { radius_km: number; rainfall_mm: number }) => {
       if (!selectedPoint) return;
       sim.startSimulation({
         center_lng: selectedPoint[0],
@@ -75,30 +75,28 @@ export default function MapView() {
           type: 'police' as const,
           color: '#a855f7',
         })),
+        ...((sim.infrastructure.ambulance_stations as Array<{ name: string; lat: number; lon: number }>) || []).map((f) => ({
+          ...f,
+          type: 'ambulance' as const,
+          color: '#f43f5e',
+        })),
+        ...((sim.infrastructure.fuel_stations as Array<{ name: string; lat: number; lon: number }>) || []).map((f) => ({
+          ...f,
+          type: 'fuel' as const,
+          color: '#eab308',
+        })),
+        ...((sim.infrastructure.power as Array<{ name: string; lat: number; lon: number }>) || []).map((f) => ({
+          ...f,
+          type: 'power' as const,
+          color: '#f59e0b',
+        })),
+        ...((sim.infrastructure.flood_infrastructure as Array<{ name: string; lat: number; lon: number }>) || []).map((f) => ({
+          ...f,
+          type: 'flood_infra' as const,
+          color: '#06b6d4',
+        })),
       ]
     : [];
-
-  // Build blocked roads GeoJSON from agent analysis
-  const blockedRoadsGeoJSON: GeoJSON.FeatureCollection | null =
-    sim.agent1Data && Array.isArray((sim.agent1Data as Record<string, unknown[]>).affected_roads)
-      ? {
-          type: 'FeatureCollection',
-          features: (
-            (sim.agent1Data as Record<string, unknown[]>).affected_roads as Array<{
-              name: string;
-              status: string;
-            }>
-          )
-            .filter((r) => r.status === 'blocked')
-            .slice(0, 5)
-            .map((road, i) => ({
-              type: 'Feature' as const,
-              properties: { name: road.name, status: road.status },
-              geometry: { type: 'Point' as const, coordinates: [0, 0] }, // placeholder
-              id: i,
-            })),
-        }
-      : null;
 
   return (
     <div className="flex h-full w-full">
@@ -155,6 +153,37 @@ export default function MapView() {
 
           <FloodLayer geojson={sim.floodGeoJSON} />
 
+          {/* Blocked roads layer */}
+          {sim.blockedRoadsGeoJSON && sim.blockedRoadsGeoJSON.features.length > 0 && (
+            <Source id="blocked-roads-source" type="geojson" data={sim.blockedRoadsGeoJSON}>
+              <Layer
+                id="blocked-roads-line"
+                type="line"
+                paint={{
+                  'line-color': [
+                    'match',
+                    ['get', 'status'],
+                    'blocked', '#ef4444',
+                    'partial', '#f59e0b',
+                    '#ef4444',
+                  ],
+                  'line-width': 4,
+                  'line-opacity': 0.9,
+                }}
+              />
+              <Layer
+                id="blocked-roads-dash"
+                type="line"
+                paint={{
+                  'line-color': '#ffffff',
+                  'line-width': 1,
+                  'line-opacity': 0.5,
+                  'line-dasharray': [2, 4],
+                }}
+              />
+            </Source>
+          )}
+
           {/* Infrastructure markers */}
           {infrastructureMarkers.map((marker, i) => (
             <Marker
@@ -171,14 +200,12 @@ export default function MapView() {
         {sim.stats && (
           <div className="absolute bottom-4 left-4 bg-zinc-900/90 backdrop-blur rounded-lg p-3 text-sm text-white">
             <div className="grid grid-cols-2 gap-x-4 gap-y-1">
-              <span className="text-zinc-400">Flooded area:</span>
-              <span className="font-mono">{sim.stats.area_km2} km2</span>
-              <span className="text-zinc-400">Max depth:</span>
-              <span className="font-mono">{sim.stats.max_depth_m} m</span>
-              <span className="text-zinc-400">Affected cells:</span>
-              <span className="font-mono">
-                {sim.stats.affected_cells} / {sim.stats.total_cells}
-              </span>
+              <span className="text-zinc-400">Flood zones:</span>
+              <span className="font-mono">{sim.stats.num_flood_zones}</span>
+              <span className="text-zinc-400">Total area:</span>
+              <span className="font-mono">{sim.stats.total_area_km2} km2</span>
+              <span className="text-zinc-400">High-risk area:</span>
+              <span className="font-mono">{sim.stats.high_risk_area_km2} km2</span>
             </div>
           </div>
         )}
@@ -193,6 +220,10 @@ export default function MapView() {
                 { color: '#22c55e', label: 'Shelters' },
                 { color: '#f97316', label: 'Fire Stations' },
                 { color: '#a855f7', label: 'Police' },
+                { color: '#f43f5e', label: 'Ambulance' },
+                { color: '#eab308', label: 'Fuel Stations' },
+                { color: '#f59e0b', label: 'Power' },
+                { color: '#06b6d4', label: 'Dams/Dykes' },
               ].map((item) => (
                 <div key={item.label} className="flex items-center gap-2">
                   <span

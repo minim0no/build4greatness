@@ -8,8 +8,7 @@ interface StatusBarProps {
 }
 
 const stages: { key: SimulationStatus; label: string }[] = [
-  { key: 'fetching_elevation', label: 'Elevation' },
-  { key: 'simulating', label: 'Simulation' },
+  { key: 'fetching_flood_data', label: 'FEMA Data' },
   { key: 'fetching_infrastructure', label: 'Infrastructure' },
   { key: 'analyzing', label: 'AI Analysis' },
   { key: 'planning', label: 'Response Plan' },

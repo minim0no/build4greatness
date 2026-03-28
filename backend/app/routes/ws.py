@@ -4,10 +4,9 @@ import uuid
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from app.agents import run_response_planner, run_simulation_analyst
-from app.elevation import fetch_elevation_grid
-from app.flood_sim import run_bfs_flood
-from app.geo_utils import depth_grid_to_geojson
+from app.fema_flood import fetch_fema_flood_zones
 from app.overpass import fetch_infrastructure
+from app.road_flood import find_blocked_roads
 
 router = APIRouter()
 
@@ -29,42 +28,15 @@ async def ws_simulate(ws: WebSocket):
         params = json.loads(raw)
 
         scenario_id = str(uuid.uuid4())
-        await send_json(ws, {"type": "status", "message": "Fetching elevation data...", "scenario_id": scenario_id})
+        await send_json(ws, {"type": "status", "message": "Fetching FEMA flood zone data...", "scenario_id": scenario_id})
 
-        # 1. Fetch elevation
-        elevation_grid, bbox = await fetch_elevation_grid(
+        # 1. Fetch FEMA flood zones
+        flood_geojson, bbox, stats = await fetch_fema_flood_zones(
             center_lng=params["center_lng"],
             center_lat=params["center_lat"],
-            radius_km=2.0,
-            cell_size_m=50.0,
+            radius_km=params.get("radius_km", 3.0),
+            rainfall_mm=params.get("rainfall_mm", 150.0),
         )
-
-        await send_json(ws, {"type": "status", "message": "Running flood simulation..."})
-
-        # 2. Run flood sim
-        depth_grid = run_bfs_flood(
-            elevation_grid=elevation_grid,
-            source_edge=params.get("water_source", "N"),
-            severity=params.get("severity", 3),
-            rainfall_mm=params.get("rainfall_mm", 100.0),
-        )
-
-        # 3. Convert to GeoJSON
-        flood_geojson = depth_grid_to_geojson(depth_grid, bbox)
-
-        # 4. Compute stats
-        import numpy as np
-        affected = int((depth_grid > 0.05).sum())
-        total = depth_grid.size
-        cell_area_km2 = (2.0 * 2 / elevation_grid.shape[0]) * (2.0 * 2 / elevation_grid.shape[1])
-        area_km2 = affected * cell_area_km2
-
-        stats = {
-            "area_km2": round(area_km2, 3),
-            "max_depth_m": round(float(depth_grid.max()), 2),
-            "affected_cells": affected,
-            "total_cells": total,
-        }
 
         # Send flood result
         await send_json(ws, {
@@ -83,11 +55,26 @@ async def ws_simulate(ws: WebSocket):
             "data": infrastructure,
         })
 
+        # 5b. Spatial intersection: find blocked roads
+        await send_json(ws, {"type": "status", "message": "Analyzing road flood intersections..."})
+        blocked_features, road_summary = find_blocked_roads(
+            infrastructure.get("roads", []), flood_geojson
+        )
+        blocked_roads_geojson = {
+            "type": "FeatureCollection",
+            "features": blocked_features,
+        }
+        await send_json(ws, {
+            "type": "blocked_roads",
+            "geojson": blocked_roads_geojson,
+            "summary": road_summary,
+        })
+
         # 6. Run Agent 1: Simulation Analyst
         await send_json(ws, {"type": "status", "message": "AI analyzing flood impact..."})
         analyst_data = {}
 
-        async for msg_type, content in run_simulation_analyst(stats, infrastructure, bbox):
+        async for msg_type, content in run_simulation_analyst(stats, infrastructure, bbox, road_summary):
             if msg_type == "chunk":
                 await send_json(ws, {"type": "agent1_chunk", "content": content})
             elif msg_type == "data":

@@ -77,13 +77,14 @@ async def run_simulation_analyst(
     flood_stats: dict,
     infrastructure: dict,
     bbox: list[float],
+    road_summary: dict | None = None,
 ) -> AsyncGenerator[tuple[str, str | dict], None]:
     """
     Agent 1: Analyze flood simulation results and infrastructure impact.
     Yields (type, content) tuples: ("chunk", text) or ("data", parsed_json).
     """
-    system_prompt = """You are a flood simulation analyst for CrisisPath, an emergency response platform.
-Analyze the flood data and infrastructure to identify impacts.
+    system_prompt = """You are a flood risk analyst for CrisisPath, an emergency response platform.
+Analyze FEMA National Flood Hazard Layer data and local infrastructure to identify impacts.
 
 You MUST output a JSON block wrapped in ```json ... ``` with this structure:
 {
@@ -96,12 +97,14 @@ You MUST output a JSON block wrapped in ```json ... ``` with this structure:
 
 After the JSON block, provide a brief markdown narrative (3-5 bullet points) explaining the key findings."""
 
-    user_message = f"""Flood simulation results for area {bbox}:
+    user_message = f"""FEMA flood zone data for area {bbox}:
 
-**Flood Statistics:**
-- Flooded area: {flood_stats.get('area_km2', 0)} km²
-- Maximum depth: {flood_stats.get('max_depth_m', 0)} m
-- Affected cells: {flood_stats.get('affected_cells', 0)} / {flood_stats.get('total_cells', 0)}
+**Flood Risk Statistics:**
+- Total flood zone area: {flood_stats.get('total_area_km2', 0)} km²
+- High-risk area: {flood_stats.get('high_risk_area_km2', 0)} km²
+- FEMA zones found: {flood_stats.get('zone_counts', {})}
+- Risk summary: {flood_stats.get('risk_summary', 'N/A')}
+- Number of flood zones: {flood_stats.get('num_flood_zones', 0)}
 
 **Infrastructure in area:**
 - Roads: {len(infrastructure.get('roads', []))} segments
@@ -113,7 +116,12 @@ After the JSON block, provide a brief markdown narrative (3-5 bullet points) exp
 
 Road names in area: {json.dumps([r['name'] for r in infrastructure.get('roads', [])[:20]])}
 
-Analyze the flood impact on this infrastructure and provide your assessment."""
+**Road Flood Analysis (spatial intersection results):**
+- Blocked roads (>50% flooded): {json.dumps(road_summary.get('blocked', []) if road_summary else [])}
+- Partially flooded roads (10-50%): {json.dumps(road_summary.get('partial', []) if road_summary else [])}
+- Clear roads: {len(road_summary.get('clear', [])) if road_summary else 'unknown'} roads
+
+Use these spatial intersection results for your affected_roads assessment. Roads listed as blocked/partial are confirmed flooded by FEMA zone overlap."""
 
     full_text = ""
     async for text in _stream_llm_text(system_prompt, user_message):
@@ -164,9 +172,10 @@ After the JSON block, provide a clear markdown narrative with the top 5 priority
 
     user_message = f"""Flood area: {bbox}
 
-**Flood Statistics:**
-- Flooded area: {flood_stats.get('area_km2', 0)} km²
-- Maximum depth: {flood_stats.get('max_depth_m', 0)} m
+**FEMA Flood Risk Statistics:**
+- Total flood zone area: {flood_stats.get('total_area_km2', 0)} km²
+- High-risk area: {flood_stats.get('high_risk_area_km2', 0)} km²
+- Risk summary: {flood_stats.get('risk_summary', 'N/A')}
 
 **Analyst Assessment:**
 {json.dumps(analyst_data, indent=2)}

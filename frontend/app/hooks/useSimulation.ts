@@ -7,8 +7,7 @@ const WS_URL = process.env.NEXT_PUBLIC_API_URL?.replace('http', 'ws') || 'ws://l
 export type SimulationStatus =
   | 'idle'
   | 'connecting'
-  | 'fetching_elevation'
-  | 'simulating'
+  | 'fetching_flood_data'
   | 'fetching_infrastructure'
   | 'analyzing'
   | 'planning'
@@ -16,16 +15,18 @@ export type SimulationStatus =
   | 'error';
 
 export interface FloodStats {
-  area_km2: number;
-  max_depth_m: number;
-  affected_cells: number;
-  total_cells: number;
+  total_area_km2: number;
+  high_risk_area_km2: number;
+  zone_counts: Record<string, number>;
+  risk_summary: string;
+  num_flood_zones: number;
 }
 
 export interface SimulationState {
   status: SimulationStatus;
   statusMessage: string;
   floodGeoJSON: GeoJSON.FeatureCollection | null;
+  blockedRoadsGeoJSON: GeoJSON.FeatureCollection | null;
   stats: FloodStats | null;
   bbox: number[] | null;
   infrastructure: Record<string, unknown[]> | null;
@@ -41,6 +42,7 @@ const initialState: SimulationState = {
   status: 'idle',
   statusMessage: '',
   floodGeoJSON: null,
+  blockedRoadsGeoJSON: null,
   stats: null,
   bbox: null,
   infrastructure: null,
@@ -60,9 +62,8 @@ export function useSimulation() {
     (params: {
       center_lng: number;
       center_lat: number;
-      severity: number;
+      radius_km: number;
       rainfall_mm: number;
-      water_source: string;
     }) => {
       // Reset state
       setState({ ...initialState, status: 'connecting', statusMessage: 'Connecting...' });
@@ -87,8 +88,7 @@ export function useSimulation() {
             setState((prev) => {
               let status: SimulationStatus = prev.status;
               const message = msg.message as string;
-              if (message.includes('elevation')) status = 'fetching_elevation';
-              else if (message.includes('simulation')) status = 'simulating';
+              if (message.includes('FEMA') || message.includes('flood zone')) status = 'fetching_flood_data';
               else if (message.includes('infrastructure')) status = 'fetching_infrastructure';
               else if (message.includes('analyzing') || message.includes('impact')) status = 'analyzing';
               else if (message.includes('response plan') || message.includes('generating')) status = 'planning';
@@ -109,6 +109,13 @@ export function useSimulation() {
             setState((prev) => ({
               ...prev,
               infrastructure: msg.data,
+            }));
+            break;
+
+          case 'blocked_roads':
+            setState((prev) => ({
+              ...prev,
+              blockedRoadsGeoJSON: msg.geojson,
             }));
             break;
 

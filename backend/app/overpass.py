@@ -24,8 +24,18 @@ async def fetch_infrastructure(bbox: list[float]) -> dict:
       node["amenity"~"police"]({bbox_str});
       node["amenity"~"shelter"]({bbox_str});
       node["building"~"public|civic"]({bbox_str});
+      node["emergency"="ambulance_station"]({bbox_str});
+      way["emergency"="ambulance_station"]({bbox_str});
+      node["amenity"="fuel"]({bbox_str});
+      way["amenity"="fuel"]({bbox_str});
+      node["power"~"substation|plant|generator"]({bbox_str});
+      way["power"~"substation|plant|generator"]({bbox_str});
+      node["waterway"~"dam|weir"]({bbox_str});
+      way["waterway"~"dam|weir"]({bbox_str});
+      node["man_made"~"dyke|pumping_station|storage_tank|reservoir_covered"]({bbox_str});
+      way["man_made"~"dyke|pumping_station|storage_tank|reservoir_covered"]({bbox_str});
     );
-    out center body;
+    out body geom;
     """
 
     try:
@@ -48,6 +58,10 @@ async def fetch_infrastructure(bbox: list[float]) -> dict:
         "fire_stations": [],
         "shelters": [],
         "police": [],
+        "ambulance_stations": [],
+        "fuel_stations": [],
+        "power": [],
+        "flood_infrastructure": [],
     }
 
     for element in data.get("elements", []):
@@ -59,6 +73,11 @@ async def fetch_infrastructure(bbox: list[float]) -> dict:
             lat, lon = element.get("lat"), element.get("lon")
         elif "center" in element:
             lat, lon = element["center"]["lat"], element["center"]["lon"]
+        elif "geometry" in element and element["geometry"]:
+            # out body geom: ways have geometry array but no center
+            pts = element["geometry"]
+            mid = pts[len(pts) // 2]
+            lat, lon = mid["lat"], mid["lon"]
         else:
             continue
 
@@ -86,6 +105,15 @@ async def fetch_infrastructure(bbox: list[float]) -> dict:
             result["shelters"].append({"name": name, "lat": lat, "lon": lon})
         elif tags.get("amenity") == "police":
             result["police"].append({"name": name, "lat": lat, "lon": lon})
+        elif tags.get("emergency") == "ambulance_station":
+            result["ambulance_stations"].append({"name": name, "lat": lat, "lon": lon})
+        elif tags.get("amenity") == "fuel":
+            result["fuel_stations"].append({"name": name, "lat": lat, "lon": lon, "operator": tags.get("operator", "")})
+        elif tags.get("power") in ("substation", "plant", "generator"):
+            result["power"].append({"name": name, "type": tags["power"], "lat": lat, "lon": lon})
+        elif tags.get("waterway") in ("dam", "weir") or tags.get("man_made") in ("dyke", "pumping_station", "storage_tank", "reservoir_covered"):
+            ftype = tags.get("waterway") or tags.get("man_made")
+            result["flood_infrastructure"].append({"name": name, "type": ftype, "lat": lat, "lon": lon})
 
     return result
 
@@ -98,4 +126,8 @@ def _empty_result() -> dict:
         "fire_stations": [],
         "shelters": [],
         "police": [],
+        "ambulance_stations": [],
+        "fuel_stations": [],
+        "power": [],
+        "flood_infrastructure": [],
     }
