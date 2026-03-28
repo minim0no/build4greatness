@@ -25,6 +25,16 @@ app.include_router(ws_router)
 app.include_router(scenarios_router)
 
 
+@app.get("/")
+async def root():
+    return {
+        "name": "CrisisPath API",
+        "docs": "/docs",
+        "openapi": "/openapi.json",
+        "health": "/api/health",
+    }
+
+
 @app.get("/api/health")
 async def health():
     return {
