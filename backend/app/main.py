@@ -40,5 +40,6 @@ async def health():
     return {
         "status": "ok",
         "mapbox_configured": bool(os.getenv("MAPBOX_ACCESS_TOKEN")),
+        "openai_configured": bool(os.getenv("OPENAI_API_KEY")),
         "anthropic_configured": bool(os.getenv("ANTHROPIC_API_KEY")),
     }

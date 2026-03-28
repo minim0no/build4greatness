@@ -5,4 +5,5 @@ python-dotenv
 numpy
 Pillow
 anthropic
+openai>=1.0.0
 shapely

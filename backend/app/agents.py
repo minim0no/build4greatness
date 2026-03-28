@@ -4,10 +4,57 @@ import re
 from typing import AsyncGenerator
 
 import anthropic
+from openai import AsyncOpenAI
 
 
-ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
-MODEL = "claude-sonnet-4-20250514"
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "").strip()
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+ANTHROPIC_MODEL = "claude-sonnet-4-20250514"
+
+
+def _llm_backend() -> tuple[str, str]:
+    """Prefer OpenAI (sk-...) when OPENAI_API_KEY is set; else Anthropic."""
+    if OPENAI_API_KEY:
+        return "openai", OPENAI_API_KEY
+    if ANTHROPIC_API_KEY:
+        return "anthropic", ANTHROPIC_API_KEY
+    raise RuntimeError(
+        "No LLM API key configured. Set OPENAI_API_KEY (OpenAI) or ANTHROPIC_API_KEY."
+    )
+
+
+async def _stream_llm_text(system_prompt: str, user_message: str) -> AsyncGenerator[str, None]:
+    backend, api_key = _llm_backend()
+    if backend == "openai":
+        client = AsyncOpenAI(api_key=api_key)
+        stream = await client.chat.completions.create(
+            model=OPENAI_MODEL,
+            max_tokens=2048,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_message},
+            ],
+            stream=True,
+        )
+        async for chunk in stream:
+            choice = chunk.choices[0] if chunk.choices else None
+            if not choice:
+                continue
+            delta = choice.delta.content
+            if delta:
+                yield delta
+        return
+
+    client = anthropic.AsyncAnthropic(api_key=api_key)
+    async with client.messages.stream(
+        model=ANTHROPIC_MODEL,
+        max_tokens=2048,
+        system=system_prompt,
+        messages=[{"role": "user", "content": user_message}],
+    ) as stream:
+        async for text in stream.text_stream:
+            yield text
 
 
 def _extract_json_block(text: str) -> dict | None:
@@ -68,18 +115,10 @@ Road names in area: {json.dumps([r['name'] for r in infrastructure.get('roads', 
 
 Analyze the flood impact on this infrastructure and provide your assessment."""
 
-    client = anthropic.AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
     full_text = ""
-
-    async with client.messages.stream(
-        model=MODEL,
-        max_tokens=2048,
-        system=system_prompt,
-        messages=[{"role": "user", "content": user_message}],
-    ) as stream:
-        async for text in stream.text_stream:
-            full_text += text
-            yield ("chunk", text)
+    async for text in _stream_llm_text(system_prompt, user_message):
+        full_text += text
+        yield ("chunk", text)
 
     # Extract structured data
     parsed = _extract_json_block(full_text)
@@ -140,18 +179,10 @@ After the JSON block, provide a clear markdown narrative with the top 5 priority
 
 Generate an actionable emergency response plan with specific evacuation routes, shelter assignments, and resource deployment recommendations."""
 
-    client = anthropic.AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
     full_text = ""
-
-    async with client.messages.stream(
-        model=MODEL,
-        max_tokens=2048,
-        system=system_prompt,
-        messages=[{"role": "user", "content": user_message}],
-    ) as stream:
-        async for text in stream.text_stream:
-            full_text += text
-            yield ("chunk", text)
+    async for text in _stream_llm_text(system_prompt, user_message):
+        full_text += text
+        yield ("chunk", text)
 
     # Extract structured data
     parsed = _extract_json_block(full_text)
