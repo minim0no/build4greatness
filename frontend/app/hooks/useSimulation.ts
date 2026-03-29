@@ -94,6 +94,8 @@ export function useSimulation() {
       center_lat: number;
       radius_km: number;
       disaster_type: DisasterType;
+      // Location context for LLM agents
+      location_name?: string;
       // Flood params
       rainfall_mm?: number;
       // Tornado params

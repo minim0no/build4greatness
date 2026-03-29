@@ -22,6 +22,24 @@ async def send_json(ws: WebSocket, data: dict):
     await ws.send_text(json.dumps(data))
 
 
+def _empty_infrastructure(reason: str) -> dict:
+    """Return an empty infrastructure dict with the failure reason logged."""
+    return {
+        "roads": [], "hospitals": [], "schools": [], "shelters": [],
+        "fire_stations": [], "police": [], "ambulance_stations": [], "power": [],
+        "query_errors": [reason],
+    }
+
+
+async def _safe_fetch_infrastructure(bbox, center_lat, center_lng, radius_km) -> dict:
+    """Fetch infrastructure, returning empty result on any failure so the pipeline continues."""
+    try:
+        return await fetch_infrastructure(bbox, center_lat=center_lat, center_lng=center_lng, radius_km=radius_km)
+    except Exception as e:
+        logger.warning("Infrastructure fetch failed, continuing without: %s", e)
+        return _empty_infrastructure(f"Infrastructure data unavailable: {type(e).__name__}")
+
+
 @router.websocket("/ws/simulate")
 async def ws_simulate(ws: WebSocket):
     await ws.accept()
@@ -57,6 +75,7 @@ async def _run_flood_pipeline(ws: WebSocket, params: dict, scenario_id: str):
     center_lat = params["center_lat"]
     center_lng = params["center_lng"]
     radius_km = params.get("radius_km", 3.0)
+    location_name = params.get("location_name")
 
     await send_json(ws, {"type": "status", "message": "Fetching FEMA flood zone data & infrastructure...", "scenario_id": scenario_id})
 
@@ -67,9 +86,7 @@ async def _run_flood_pipeline(ws: WebSocket, params: dict, scenario_id: str):
         radius_km=radius_km,
         rainfall_mm=params.get("rainfall_mm", 150.0),
     )
-    infra_task = fetch_infrastructure(
-        # Use a bbox derived from center/radius for the infra query.
-        # The exact bbox comes from FEMA, but for infra we can estimate it.
+    infra_task = _safe_fetch_infrastructure(
         bbox_from_center(center_lng, center_lat, radius_km),
         center_lat=center_lat,
         center_lng=center_lng,
@@ -116,7 +133,7 @@ async def _run_flood_pipeline(ws: WebSocket, params: dict, scenario_id: str):
     await send_json(ws, {"type": "status", "message": "AI analyzing flood impact..."})
     analyst_data = {}
 
-    async for msg_type, content in run_simulation_analyst(stats, infrastructure, bbox, road_summary):
+    async for msg_type, content in run_simulation_analyst(stats, infrastructure, bbox, road_summary, location_name=location_name):
         if msg_type == "chunk":
             await send_json(ws, {"type": "agent1_chunk", "content": content})
         elif msg_type == "data":
@@ -126,7 +143,7 @@ async def _run_flood_pipeline(ws: WebSocket, params: dict, scenario_id: str):
     # 5. Run Agent 2: Response Planner
     await send_json(ws, {"type": "status", "message": "AI generating response plan..."})
 
-    async for msg_type, content in run_response_planner(stats, analyst_data, infrastructure, bbox):
+    async for msg_type, content in run_response_planner(stats, analyst_data, infrastructure, bbox, location_name=location_name):
         if msg_type == "chunk":
             await send_json(ws, {"type": "agent2_chunk", "content": content})
         elif msg_type == "data":
@@ -154,6 +171,7 @@ async def _run_tornado_pipeline(ws: WebSocket, params: dict, scenario_id: str):
     radius_km = params.get("radius_km", 3.0)
     ef_scale = params.get("ef_scale", 3)
     direction_deg = params.get("direction_deg", 45)
+    location_name = params.get("location_name")
 
     await send_json(ws, {"type": "status", "message": "Simulating tornado path & fetching infrastructure...", "scenario_id": scenario_id})
 
@@ -165,8 +183,8 @@ async def _run_tornado_pipeline(ws: WebSocket, params: dict, scenario_id: str):
         direction_deg=direction_deg,
     )
 
-    # Fetch infrastructure concurrently now that we have the bbox
-    infrastructure = await fetch_infrastructure(
+    # Fetch infrastructure — gracefully degrade if Overpass is down
+    infrastructure = await _safe_fetch_infrastructure(
         bbox,
         center_lat=center_lat,
         center_lng=center_lng,
@@ -209,7 +227,7 @@ async def _run_tornado_pipeline(ws: WebSocket, params: dict, scenario_id: str):
     await send_json(ws, {"type": "status", "message": "AI analyzing tornado impact..."})
     analyst_data = {}
 
-    async for msg_type, content in run_tornado_analyst(stats, infrastructure, bbox, road_summary):
+    async for msg_type, content in run_tornado_analyst(stats, infrastructure, bbox, road_summary, location_name=location_name):
         if msg_type == "chunk":
             await send_json(ws, {"type": "agent1_chunk", "content": content})
         elif msg_type == "data":
@@ -219,7 +237,7 @@ async def _run_tornado_pipeline(ws: WebSocket, params: dict, scenario_id: str):
     # 5. Run tornado planner
     await send_json(ws, {"type": "status", "message": "AI generating response plan..."})
 
-    async for msg_type, content in run_tornado_planner(stats, analyst_data, infrastructure, bbox):
+    async for msg_type, content in run_tornado_planner(stats, analyst_data, infrastructure, bbox, location_name=location_name):
         if msg_type == "chunk":
             await send_json(ws, {"type": "agent2_chunk", "content": content})
         elif msg_type == "data":
@@ -246,6 +264,7 @@ async def _run_asteroid_pipeline(ws: WebSocket, params: dict, scenario_id: str):
     center_lng = params["center_lng"]
     radius_km = params.get("radius_km", 3.0)
     mass_kg = params.get("mass_kg", 1e6)
+    location_name = params.get("location_name")
 
     await send_json(ws, {"type": "status", "message": "Simulating asteroid impact & fetching infrastructure...", "scenario_id": scenario_id})
 
@@ -270,7 +289,7 @@ async def _run_asteroid_pipeline(ws: WebSocket, params: dict, scenario_id: str):
         }
     else:
         search_radius = max(radius_km, max_damage_km)
-        infrastructure = await fetch_infrastructure(
+        infrastructure = await _safe_fetch_infrastructure(
             bbox,
             center_lat=center_lat,
             center_lng=center_lng,
@@ -311,7 +330,7 @@ async def _run_asteroid_pipeline(ws: WebSocket, params: dict, scenario_id: str):
     await send_json(ws, {"type": "status", "message": "AI analyzing impact damage..."})
     analyst_data = {}
 
-    async for msg_type, content in run_asteroid_analyst(stats, infrastructure, bbox, road_summary):
+    async for msg_type, content in run_asteroid_analyst(stats, infrastructure, bbox, road_summary, location_name=location_name):
         if msg_type == "chunk":
             await send_json(ws, {"type": "agent1_chunk", "content": content})
         elif msg_type == "data":
@@ -321,7 +340,7 @@ async def _run_asteroid_pipeline(ws: WebSocket, params: dict, scenario_id: str):
     # 5. Run asteroid planner
     await send_json(ws, {"type": "status", "message": "AI generating response plan..."})
 
-    async for msg_type, content in run_asteroid_planner(stats, analyst_data, infrastructure, bbox):
+    async for msg_type, content in run_asteroid_planner(stats, analyst_data, infrastructure, bbox, location_name=location_name):
         if msg_type == "chunk":
             await send_json(ws, {"type": "agent2_chunk", "content": content})
         elif msg_type == "data":

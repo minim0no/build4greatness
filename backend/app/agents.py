@@ -164,6 +164,7 @@ async def run_simulation_analyst(
     infrastructure: dict,
     bbox: list[float],
     road_summary: dict | None = None,
+    location_name: str | None = None,
 ) -> AsyncGenerator[tuple[str, str | dict], None]:
     """Agent 1: Analyze flood simulation results and infrastructure impact."""
     system_prompt = f"""You are a flood risk analyst for CrisisPath, an educational disaster simulation tool.
@@ -180,7 +181,8 @@ You MUST output a JSON block wrapped in ```json ... ``` with this structure:
 
 After the JSON block, provide a brief markdown narrative (3-5 bullet points) explaining the key findings."""
 
-    user_message = f"""{_data_warnings(infrastructure)}FEMA flood zone data for area {bbox}:
+    location_line = f"**Location:** {location_name}\n" if location_name else ""
+    user_message = f"""{_data_warnings(infrastructure)}{location_line}FEMA flood zone data for area {bbox}:
 
 **Flood Risk Statistics:**
 - Search area: {flood_stats.get('search_area_km2', 0)} km²
@@ -212,6 +214,7 @@ async def run_response_planner(
     analyst_data: dict,
     infrastructure: dict,
     bbox: list[float],
+    location_name: str | None = None,
 ) -> AsyncGenerator[tuple[str, str | dict], None]:
     """Agent 2: Generate actionable evacuation and response plan."""
     system_prompt = f"""You are a preparedness planner for CrisisPath, an educational disaster simulation tool.
@@ -229,7 +232,8 @@ You MUST output a JSON block wrapped in ```json ... ``` with this structure:
 
 After the JSON block, provide a clear markdown narrative with the top 5 practical preparedness steps."""
 
-    user_message = f"""{_data_warnings(infrastructure)}Flood area: {bbox}
+    location_line = f"**Location:** {location_name}\n" if location_name else ""
+    user_message = f"""{_data_warnings(infrastructure)}{location_line}Flood area: {bbox}
 
 **FEMA Flood Risk Statistics:**
 - Search area: {flood_stats.get('search_area_km2', 0)} km²
@@ -258,6 +262,7 @@ async def run_tornado_analyst(
     infrastructure: dict,
     bbox: list[float],
     road_summary: dict | None = None,
+    location_name: str | None = None,
 ) -> AsyncGenerator[tuple[str, str | dict], None]:
     """Analyze tornado simulation results and infrastructure impact."""
     system_prompt = f"""You are a tornado risk analyst for CrisisPath, an educational disaster simulation tool.
@@ -274,7 +279,8 @@ You MUST output a JSON block wrapped in ```json ... ``` with this structure:
 
 After the JSON block, provide a brief markdown narrative (3-5 bullet points) explaining the key findings."""
 
-    user_message = f"""{_data_warnings(infrastructure)}Tornado path data for area {bbox}:
+    location_line = f"**Location:** {location_name}\n" if location_name else ""
+    user_message = f"""{_data_warnings(infrastructure)}{location_line}Tornado path data for area {bbox}:
 
 **Tornado Statistics:**
 - EF Scale: EF{tornado_stats.get('ef_scale', 0)}
@@ -303,6 +309,7 @@ async def run_tornado_planner(
     analyst_data: dict,
     infrastructure: dict,
     bbox: list[float],
+    location_name: str | None = None,
 ) -> AsyncGenerator[tuple[str, str | dict], None]:
     """Generate actionable tornado response and shelter plan."""
     system_prompt = f"""You are a preparedness planner for CrisisPath, an educational disaster simulation tool.
@@ -320,7 +327,8 @@ You MUST output a JSON block wrapped in ```json ... ``` with this structure:
 
 After the JSON block, provide a clear markdown narrative with the top 5 practical preparedness steps."""
 
-    user_message = f"""{_data_warnings(infrastructure)}Tornado area: {bbox}
+    location_line = f"**Location:** {location_name}\n" if location_name else ""
+    user_message = f"""{_data_warnings(infrastructure)}{location_line}Tornado area: {bbox}
 
 **Tornado Statistics:**
 - EF Scale: EF{tornado_stats.get('ef_scale', 0)}
@@ -348,6 +356,7 @@ async def run_asteroid_analyst(
     infrastructure: dict,
     bbox: list[float],
     road_summary: dict | None = None,
+    location_name: str | None = None,
 ) -> AsyncGenerator[tuple[str, str | dict], None]:
     """Analyze asteroid impact simulation results and infrastructure damage."""
     system_prompt = f"""You are an asteroid impact analyst for CrisisPath, an educational disaster simulation tool.
@@ -363,7 +372,8 @@ You MUST output a JSON block wrapped in ```json ... ``` with this structure:
 
 After the JSON block, provide a brief markdown narrative (3-5 bullet points) explaining the key findings."""
 
-    user_message = f"""{_data_warnings(infrastructure)}Asteroid impact data for area {bbox}:
+    location_line = f"**Location:** {location_name}\n" if location_name else ""
+    user_message = f"""{_data_warnings(infrastructure)}{location_line}Asteroid impact data for area {bbox}:
 
 **Impact Statistics:**
 - Impactor mass: {asteroid_stats.get('mass_kg', 0)} kg
@@ -393,6 +403,7 @@ async def run_asteroid_planner(
     analyst_data: dict,
     infrastructure: dict,
     bbox: list[float],
+    location_name: str | None = None,
 ) -> AsyncGenerator[tuple[str, str | dict], None]:
     """Generate actionable asteroid impact response and evacuation plan."""
     system_prompt = f"""You are a preparedness planner for CrisisPath, an educational disaster simulation tool.
@@ -409,7 +420,8 @@ You MUST output a JSON block wrapped in ```json ... ``` with this structure:
 
 After the JSON block, provide a clear markdown narrative with the top 5 takeaways from this simulation."""
 
-    user_message = f"""{_data_warnings(infrastructure)}Impact area: {bbox}
+    location_line = f"**Location:** {location_name}\n" if location_name else ""
+    user_message = f"""{_data_warnings(infrastructure)}{location_line}Impact area: {bbox}
 
 **Asteroid Impact Statistics:**
 - Impactor mass: {asteroid_stats.get('mass_kg', 0)} kg

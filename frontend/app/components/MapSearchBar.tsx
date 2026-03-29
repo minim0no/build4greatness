@@ -17,9 +17,11 @@ interface MapSearchBarProps {
   onFlyStart: (placeName: string) => void;
   /** Called once when the fly animation settles (then parent may enter 3D, etc.). */
   onFlightComplete: () => void;
+  /** Called when a location is selected via search, providing the geocoded name and coords. */
+  onLocationSelected?: (locationName: string, coords: [number, number]) => void;
 }
 
-export default function MapSearchBar({ mapRef, onFlyStart, onFlightComplete }: MapSearchBarProps) {
+export default function MapSearchBar({ mapRef, onFlyStart, onFlightComplete, onLocationSelected }: MapSearchBarProps) {
   const [query, setQuery] = useState('');
   const [suggestions, setSuggestions] = useState<GeocodeFeature[]>([]);
   const [open, setOpen] = useState(false);
@@ -100,6 +102,7 @@ export default function MapSearchBar({ mapRef, onFlyStart, onFlightComplete }: M
         if (gen === flyGenerationRef.current) onFlightComplete();
       };
       map.once('moveend', finish);
+      onLocationSelected?.(placeName, [lng, lat]);
 
       const easeOutCubic = (t: number) => 1 - (1 - t) ** 3;
       map.flyTo({
@@ -113,7 +116,7 @@ export default function MapSearchBar({ mapRef, onFlyStart, onFlightComplete }: M
         essential: true,
       });
     },
-    [mapRef, onFlyStart, onFlightComplete]
+    [mapRef, onFlyStart, onFlightComplete, onLocationSelected]
   );
 
   const onSubmit = (e: React.FormEvent) => {

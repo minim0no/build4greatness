@@ -33,6 +33,18 @@ import StatusBar from "./StatusBar";
 
 const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN || "";
 
+async function reverseGeocode(lng: number, lat: number): Promise<string | null> {
+    if (!MAPBOX_TOKEN) return null;
+    try {
+        const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${lng},${lat}.json?access_token=${MAPBOX_TOKEN}&types=place,locality,neighborhood&limit=1&language=en`;
+        const res = await fetch(url);
+        const data = await res.json();
+        return data.features?.[0]?.place_name ?? null;
+    } catch {
+        return null;
+    }
+}
+
 function makeCircleGeoJSON(
     center: [number, number],
     radiusKm: number,
@@ -102,6 +114,7 @@ export default function MapView({ onReady }: MapViewProps) {
     const [is3D, setIs3D] = useState(false);
     const [isDayMode, setIsDayMode] = useState(true);
     const [flyingToPlace, setFlyingToPlace] = useState<string | null>(null);
+    const [locationName, setLocationName] = useState<string | null>(null);
     const [lastRunMeta, setLastRunMeta] = useState<LastRunMeta | null>(null);
     const [pdfExporting, setPdfExporting] = useState(false);
     const sim = useSimulation();
@@ -114,7 +127,12 @@ export default function MapView({ onReady }: MapViewProps) {
         sim.status !== "error";
 
     const handleMapClick = useCallback((e: MapMouseEvent) => {
-        setSelectedPoint([e.lngLat.lng, e.lngLat.lat]);
+        const coords: [number, number] = [e.lngLat.lng, e.lngLat.lat];
+        setSelectedPoint(coords);
+        setLocationName(null);
+        reverseGeocode(coords[0], coords[1]).then((name) => {
+            if (name) setLocationName(name);
+        });
     }, []);
 
     const handleSimulate = useCallback(
@@ -135,10 +153,11 @@ export default function MapView({ onReady }: MapViewProps) {
             sim.startSimulation({
                 center_lng: selectedPoint[0],
                 center_lat: selectedPoint[1],
+                ...(locationName ? { location_name: locationName } : {}),
                 ...params,
             });
         },
-        [selectedPoint, sim.startSimulation],
+        [selectedPoint, locationName, sim.startSimulation],
     );
 
     const handleDownloadResponsePdf = useCallback(async () => {
@@ -683,7 +702,7 @@ export default function MapView({ onReady }: MapViewProps) {
                 </Map>
             </div>
 
-            <RainOverlay active={floodSessionActive} />
+            <RainOverlay active={false} />
 
             {/* City search — top center */}
             <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[25] w-[min(100%-2rem,28rem)] flex flex-col items-stretch gap-2 pointer-events-none">
@@ -691,6 +710,10 @@ export default function MapView({ onReady }: MapViewProps) {
                     mapRef={mapRef}
                     onFlyStart={setFlyingToPlace}
                     onFlightComplete={completeSearchFlight}
+                    onLocationSelected={(name, coords) => {
+                        setSelectedPoint(coords);
+                        setLocationName(name);
+                    }}
                 />
                 <FlyingToBanner placeName={flyingToPlace} />
             </div>

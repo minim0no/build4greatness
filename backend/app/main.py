@@ -9,6 +9,7 @@ load_dotenv()
 from app.routes.simulate import router as simulate_router
 from app.routes.ws import router as ws_router
 from app.routes.scenarios import router as scenarios_router
+from app.routes.meteorites import router as meteorites_router
 
 app = FastAPI(title="CrisisPath API", version="0.1.0")
 
@@ -23,6 +24,7 @@ app.add_middleware(
 app.include_router(simulate_router)
 app.include_router(ws_router)
 app.include_router(scenarios_router)
+app.include_router(meteorites_router)
 
 
 @app.get("/")

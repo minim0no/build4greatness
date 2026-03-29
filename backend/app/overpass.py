@@ -7,7 +7,12 @@ import httpx
 logger = logging.getLogger(__name__)
 
 
-OVERPASS_URL = "https://overpass-api.de/api/interpreter"
+OVERPASS_URLS = [
+    "https://overpass-api.de/api/interpreter",
+    "https://overpass.kumi.systems/api/interpreter",
+    "https://overpass.private.coffee/api/interpreter",
+    "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
+]
 
 # Overpass API allows ~2 concurrent requests per IP
 _overpass_semaphore = asyncio.Semaphore(1)
@@ -21,30 +26,31 @@ def _is_within_circle(lat: float, lon: float, center_lat: float, center_lng: flo
 
 
 async def _run_overpass_query(client: httpx.AsyncClient, query: str, label: str) -> tuple[list[dict], str | None]:
-    """Execute a single Overpass query with retry on 429. Returns (elements, error_or_none)."""
-    for attempt in range(3):
+    """Execute an Overpass query, trying multiple mirrors on failure."""
+    last_err = None
+    for url in OVERPASS_URLS:
         try:
             async with _overpass_semaphore:
                 resp = await client.post(
-                    OVERPASS_URL,
+                    url,
                     data={"data": query},
                     timeout=30.0,
                 )
             if resp.status_code == 429:
-                wait = 2 * (attempt + 1)
-                logger.warning("Overpass %s 429 rate-limited, retrying in %ds (attempt %d/3)", label, wait, attempt + 1)
-                await asyncio.sleep(wait)
+                logger.warning("Overpass %s 429 from %s, trying next mirror", label, url)
+                await asyncio.sleep(1)
                 continue
             if resp.status_code != 200:
-                err = f"{label} query failed: HTTP {resp.status_code}"
-                logger.error("Overpass %s — %s", err, resp.text[:200])
-                return [], err
+                last_err = f"HTTP {resp.status_code} from {url}"
+                logger.warning("Overpass %s — %s", label, last_err)
+                continue
             return resp.json().get("elements", []), None
         except Exception as e:
-            err = f"{label} query failed: {type(e).__name__}"
-            logger.exception("Overpass %s", err)
-            return [], err
-    err = f"{label} query failed: rate-limited after 3 retries"
+            last_err = f"{type(e).__name__} from {url}"
+            logger.warning("Overpass %s — %s", label, last_err)
+            continue
+
+    err = f"{label} query failed: all mirrors exhausted ({last_err})"
     logger.error("Overpass %s", err)
     return [], err
 
@@ -58,37 +64,27 @@ async def fetch_infrastructure(bbox: list[float], center_lat: float = None, cent
     min_lng, min_lat, max_lng, max_lat = bbox
     bbox_str = f"{min_lat},{min_lng},{max_lat},{max_lng}"
 
-    # For large radii, drop residential roads to keep payload manageable.
-    # A 10km bbox in Houston returns 20K+ residential road segments.
-    if radius_km is not None and radius_km > 5:
-        road_types = "primary|secondary|tertiary|trunk|motorway"
-    else:
-        road_types = "primary|secondary|tertiary|residential|trunk|motorway"
+    # Only major roads — residential roads bloat the response massively
+    # (20K+ segments in dense areas) and cause Overpass timeouts.
+    road_types = "primary|secondary|tertiary|trunk|motorway"
 
-    # Single combined query — the public Overpass API rate-limits by slot, so
-    # one large query is cheaper on quota than three separate requests.
+    # For large areas, restrict roads further to avoid Overpass timeouts.
+    # A 10km+ bbox can return thousands of road ways with full geometry.
+    bbox_area_deg2 = abs(max_lat - min_lat) * abs(max_lng - min_lng)
+    if bbox_area_deg2 > 0.1:
+        road_types = "primary|trunk|motorway"
+
+    # Roads: out skel geom (geometry without tags — lighter than out body geom).
+    # POIs: wrapped in union so all results go into one set, then out body.
     query = f"""
-    [out:json][timeout:15];
+    [out:json][timeout:20][maxsize:5242880];
+    way["highway"~"{road_types}"]({bbox_str});
+    out skel geom;
     (
-      way["highway"~"{road_types}"]({bbox_str});
-      node["amenity"~"hospital|clinic"]({bbox_str});
-      node["amenity"~"school"]({bbox_str});
-      node["amenity"~"fire_station"]({bbox_str});
-      node["amenity"~"police"]({bbox_str});
-      node["amenity"~"shelter"]({bbox_str});
-      node["building"~"public|civic"]({bbox_str});
+      node["amenity"~"hospital|clinic|fire_station|police|shelter"]({bbox_str});
       node["emergency"="ambulance_station"]({bbox_str});
-      way["emergency"="ambulance_station"]({bbox_str});
-      node["amenity"="fuel"]({bbox_str});
-      way["amenity"="fuel"]({bbox_str});
-      node["power"~"substation|plant|generator"]({bbox_str});
-      way["power"~"substation|plant|generator"]({bbox_str});
-      node["waterway"~"dam|weir"]({bbox_str});
-      way["waterway"~"dam|weir"]({bbox_str});
-      node["man_made"~"dyke|pumping_station|storage_tank|reservoir_covered"]({bbox_str});
-      way["man_made"~"dyke|pumping_station|storage_tank|reservoir_covered"]({bbox_str});
     );
-    out body geom;
+    out body;
     """
 
     async with httpx.AsyncClient() as client:
@@ -118,23 +114,14 @@ async def fetch_infrastructure(bbox: list[float], center_lat: float = None, cent
             })
         elif tags.get("amenity") in ("hospital", "clinic"):
             result["hospitals"].append({"name": name, "lat": lat, "lon": lon})
-        elif tags.get("amenity") == "school":
-            result["schools"].append({"name": name, "lat": lat, "lon": lon})
         elif tags.get("amenity") == "fire_station":
             result["fire_stations"].append({"name": name, "lat": lat, "lon": lon})
-        elif tags.get("amenity") == "shelter" or tags.get("building") in ("public", "civic"):
+        elif tags.get("amenity") == "shelter":
             result["shelters"].append({"name": name, "lat": lat, "lon": lon})
         elif tags.get("amenity") == "police":
             result["police"].append({"name": name, "lat": lat, "lon": lon})
         elif tags.get("emergency") == "ambulance_station":
             result["ambulance_stations"].append({"name": name, "lat": lat, "lon": lon})
-        elif tags.get("amenity") == "fuel":
-            result["fuel_stations"].append({"name": name, "lat": lat, "lon": lon, "operator": tags.get("operator", "")})
-        elif tags.get("power") in ("substation", "plant", "generator"):
-            result["power"].append({"name": name, "type": tags["power"], "lat": lat, "lon": lon})
-        elif tags.get("waterway") in ("dam", "weir") or tags.get("man_made") in ("dyke", "pumping_station", "storage_tank", "reservoir_covered"):
-            ftype = tags.get("waterway") or tags.get("man_made")
-            result["disaster_infrastructure"].append({"name": name, "type": ftype, "lat": lat, "lon": lon})
 
     # Filter all features to within the analysis circle
     if center_lat is not None and center_lng is not None and radius_km is not None:
@@ -173,12 +160,8 @@ def _empty_result() -> dict:
     return {
         "roads": [],
         "hospitals": [],
-        "schools": [],
         "fire_stations": [],
         "shelters": [],
         "police": [],
         "ambulance_stations": [],
-        "fuel_stations": [],
-        "power": [],
-        "disaster_infrastructure": [],
     }

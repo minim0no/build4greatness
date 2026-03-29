@@ -1,7 +1,7 @@
 'use client';
 
 import Image from 'next/image';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { DisasterType } from '../hooks/useSimulation';
 
 const RAIN_PRESETS = [
@@ -36,6 +36,22 @@ const MASS_PRESETS = [
   { label: 'Chicxulub', kg: 1e14, desc: 'Chicxulub-class — extinction-level event, global devastation' },
 ];
 
+interface NasaMeteorite {
+  name: string;
+  year: string | null;
+  mass_g: number;
+  recclass: string;
+}
+
+function formatMassShort(g: number): string {
+  const kg = g / 1000;
+  if (kg >= 1e9) return `${(kg / 1e9).toFixed(1)}B kg`;
+  if (kg >= 1e6) return `${(kg / 1e6).toFixed(1)}M kg`;
+  if (kg >= 1e3) return `${(kg / 1e3).toFixed(0)}t`;
+  if (kg >= 1) return `${kg.toFixed(1)} kg`;
+  return `${g.toFixed(0)} g`;
+}
+
 interface ControlPanelProps {
   selectedPoint: [number, number] | null;
   radiusKm: number;
@@ -66,6 +82,39 @@ export default function ControlPanel({
   const [directionDeg, setDirectionDeg] = useState(45);
   // Asteroid
   const [massKg, setMassKg] = useState(1.2e7);
+  // NASA meteorite data
+  const [nasaMeteorites, setNasaMeteorites] = useState<NasaMeteorite[]>([]);
+  const [meteoritesLoading, setMeteoritesLoading] = useState(false);
+  const [meteoritesError, setMeteoritesError] = useState<string | null>(null);
+
+  // Fetch NASA meteorites when asteroid tab is selected
+  useEffect(() => {
+    if (disasterType !== 'asteroid' || nasaMeteorites.length > 0) return;
+    let cancelled = false;
+    setMeteoritesLoading(true);
+    fetch('http://localhost:8000/api/meteorites?limit=1000&min_mass_g=100')
+      .then((r) => r.json())
+      .then((geojson) => {
+        if (cancelled) return;
+        const items: NasaMeteorite[] = (geojson.features || []).map(
+          (f: { properties: Record<string, unknown> }) => ({
+            name: f.properties.name as string,
+            year: f.properties.year as string | null,
+            mass_g: f.properties.mass_g as number,
+            recclass: f.properties.recclass as string,
+          }),
+        );
+        setNasaMeteorites(items);
+        setMeteoritesError(null);
+      })
+      .catch(() => {
+        if (!cancelled) setMeteoritesError('Failed to load NASA data');
+      })
+      .finally(() => {
+        if (!cancelled) setMeteoritesLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [disasterType, nasaMeteorites.length]);
 
   const handleSubmit = () => {
     if (disasterType === 'flood') {
@@ -207,6 +256,39 @@ export default function ControlPanel({
                 {preset.label}
               </button>
             ))}
+          </div>
+
+          {/* NASA real meteorite selector */}
+          <div className="border-t border-white/10 pt-3">
+            <label className="block text-xs font-semibold text-white/80 uppercase tracking-wide mb-2">
+              Real Meteorite Data (NASA)
+            </label>
+            {meteoritesLoading ? (
+              <div className="flex items-center gap-2 text-xs text-white/50">
+                <span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                Loading NASA data...
+              </div>
+            ) : meteoritesError ? (
+              <p className="text-xs text-red-400">{meteoritesError}</p>
+            ) : (
+              <select
+                className="w-full bg-white/10 text-white text-xs rounded px-2 py-2 border border-white/15 focus:border-orange-500 focus:outline-none appearance-none cursor-pointer"
+                defaultValue=""
+                onChange={(e) => {
+                  const m = nasaMeteorites[Number(e.target.value)];
+                  if (m) setMassKg(m.mass_g / 1000);
+                }}
+              >
+                <option value="" disabled className="bg-[#1a1a2e]">
+                  Select a real meteorite...
+                </option>
+                {nasaMeteorites.map((m, i) => (
+                  <option key={`${m.name}-${i}`} value={i} className="bg-[#1a1a2e]">
+                    {m.name} {m.year ? `(${m.year})` : ''} — {formatMassShort(m.mass_g)}
+                  </option>
+                ))}
+              </select>
+            )}
           </div>
         </>
       ) : disasterType === 'flood' ? (

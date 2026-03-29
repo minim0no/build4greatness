@@ -211,19 +211,19 @@ function formatStats(disasterType: DisasterType, stats: Record<string, unknown> 
   if (!stats) return ['No quantitative statistics returned.'];
   if (disasterType === 'flood') {
     return [
-      `Search area: ${stats.search_area_km2} km2`,
-      `Flooded / hazard zone area: ${stats.total_area_km2} km2`,
-      `High-risk area: ${stats.high_risk_area_km2} km2`,
-      `Flood coverage (of search area): ${stats.flood_coverage_pct}%`,
+      `Search area: ${stats.search_area_km2} km\u00B2`,
+      `Flooded / hazard zone area: ${stats.total_area_km2} km\u00B2`,
+      `High-risk area: ${stats.high_risk_area_km2} km\u00B2`,
+      `Flood coverage: ${stats.flood_coverage_pct}% of search area`,
       `Flood zone features: ${stats.num_flood_zones}`,
       `Risk summary: ${stats.risk_summary}`,
     ];
   }
   return [
-    `EF scale (simulated): EF${stats.ef_scale}`,
+    `EF scale: EF${stats.ef_scale}`,
     `Path length: ${stats.path_length_km} km`,
     `Path width: ${stats.path_width_m} m`,
-    `Affected area: ${stats.affected_area_km2} km2`,
+    `Affected area: ${stats.affected_area_km2} km\u00B2`,
     `Risk summary: ${stats.risk_summary}`,
   ];
 }
@@ -271,7 +271,12 @@ function stringifyAgentData(data: Record<string, unknown> | null, label: string)
   if (Array.isArray(ar) && ar.length) {
     parts.push('Affected roads:');
     for (const x of ar) {
-      parts.push(`  - ${typeof x === 'string' ? x : String(x)}`);
+      if (typeof x === 'string') {
+        parts.push(`  - ${x}`);
+      } else if (x && typeof x === 'object') {
+        const r = x as Record<string, unknown>;
+        parts.push(`  - ${r.name ?? 'Unknown road'} (${r.status ?? 'unknown status'})`);
+      }
     }
   } else if (typeof data.affected_roads === 'string' && data.affected_roads.trim()) {
     parts.push(`Affected roads: ${data.affected_roads}`);
@@ -281,7 +286,12 @@ function stringifyAgentData(data: Record<string, unknown> | null, label: string)
   if (Array.isArray(af) && af.length) {
     parts.push('At-risk facilities:');
     for (const x of af) {
-      parts.push(`  - ${typeof x === 'string' ? x : String(x)}`);
+      if (typeof x === 'string') {
+        parts.push(`  - ${x}`);
+      } else if (x && typeof x === 'object') {
+        const f = x as Record<string, unknown>;
+        parts.push(`  - ${f.name ?? 'Unknown'} (${f.type ?? 'facility'}) — risk: ${f.risk ?? 'unknown'}`);
+      }
     }
   }
 
@@ -322,7 +332,7 @@ function stringifyAgentData(data: Record<string, unknown> | null, label: string)
 
 function drawHeroBanner(doc: jsPDF, p: ResponsePdfParams): number {
   const W = pageW(doc);
-  const H = 40;
+  const H = 46;
   doc.setFillColor(...C.heroTop);
   doc.rect(0, 0, W, H, 'F');
   doc.setFillColor(...C.heroBottom);
@@ -355,10 +365,13 @@ function drawHeroBanner(doc: jsPDF, p: ResponsePdfParams): number {
   doc.text(ts, MARGIN, titleY + 7);
 
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(7.5);
+  doc.setFontSize(7);
   doc.setTextColor(...C.textMuted);
   if (p.scenarioId) {
-    doc.text(`Scenario ID: ${p.scenarioId}`, MARGIN, titleY + 12);
+    const idText = `Scenario ID: ${p.scenarioId}`;
+    const idMaxW = W - MARGIN * 2;
+    const idLines = doc.splitTextToSize(idText, idMaxW);
+    doc.text(idLines, MARGIN, titleY + 13);
   }
 
   const badge = p.disasterType === 'flood' ? 'FLOOD' : 'TORNADO';
@@ -400,67 +413,36 @@ export async function generateResponsePdf(p: ResponsePdfParams): Promise<void> {
   let y = drawHeroBanner(doc, p);
 
   y = sectionHeader(doc, 'Scenario context', y, C.sections.context);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(BODY);
-  doc.setTextColor(...C.label);
-  doc.text('Disaster type', MARGIN + 3, y);
-  doc.setFont('helvetica', 'normal');
-  doc.setTextColor(...C.body);
-  doc.text(p.disasterType, MARGIN + 38, y);
-  y += LINE + 1;
+  const valX = MARGIN + 45;
+  const ctxRow = (label: string, value: string, valueColor?: [number, number, number]) => {
+    y = ensureSpace(doc, y, LINE + 1);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(BODY);
+    doc.setTextColor(...C.label);
+    doc.text(label, MARGIN + 3, y);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(...(valueColor ?? C.body));
+    doc.text(value, valX, y);
+    doc.setTextColor(...C.body);
+    y += LINE + 1;
+  };
+
+  ctxRow('Disaster type', p.disasterType.charAt(0).toUpperCase() + p.disasterType.slice(1));
   if (p.location) {
-    doc.setFont('helvetica', 'bold');
-    doc.setTextColor(...C.label);
-    doc.text('Study center (lat, lng)', MARGIN + 3, y);
-    doc.setFont('helvetica', 'normal');
-    doc.setTextColor(...C.body);
-    doc.text(`${p.location.lat.toFixed(5)}, ${p.location.lng.toFixed(5)}`, MARGIN + 48, y);
-    y += LINE + 1;
+    ctxRow('Center (lat, lng)', `${p.location.lat.toFixed(5)}, ${p.location.lng.toFixed(5)}`);
   }
-  doc.setFont('helvetica', 'bold');
-  doc.setTextColor(...C.label);
-  doc.text('Scan radius (analysis)', MARGIN + 3, y);
-  doc.setFont('helvetica', 'normal');
-  doc.setTextColor(...C.body);
-  doc.text(`${p.radiusKm} km`, MARGIN + 48, y);
-  y += LINE + 1;
+  ctxRow('Analysis radius', `${p.radiusKm} km`);
   if (p.lastRun) {
-    doc.setFont('helvetica', 'bold');
-    doc.setTextColor(...C.label);
-    doc.text('Last run radius', MARGIN + 3, y);
-    doc.setFont('helvetica', 'normal');
-    doc.setTextColor(...C.body);
-    doc.text(`${p.lastRun.radius_km} km`, MARGIN + 48, y);
-    y += LINE + 1;
+    ctxRow('Run radius', `${p.lastRun.radius_km} km`);
     if (p.disasterType === 'flood' && p.lastRun.rainfall_mm != null) {
-      doc.setFont('helvetica', 'bold');
-      doc.setTextColor(...C.label);
-      doc.text('Rainfall scenario', MARGIN + 3, y);
-      doc.setFont('helvetica', 'normal');
-      doc.setTextColor(37, 99, 235);
-      doc.text(`${p.lastRun.rainfall_mm} mm`, MARGIN + 48, y);
-      doc.setTextColor(...C.body);
-      y += LINE + 1;
+      ctxRow('Rainfall', `${p.lastRun.rainfall_mm} mm`, [37, 99, 235]);
     }
     if (p.disasterType === 'tornado') {
       if (p.lastRun.ef_scale != null) {
-        doc.setFont('helvetica', 'bold');
-        doc.setTextColor(...C.label);
-        doc.text('EF scale', MARGIN + 3, y);
-        doc.setFont('helvetica', 'normal');
-        doc.setTextColor(217, 119, 6);
-        doc.text(`EF${p.lastRun.ef_scale}`, MARGIN + 48, y);
-        doc.setTextColor(...C.body);
-        y += LINE + 1;
+        ctxRow('EF scale', `EF${p.lastRun.ef_scale}`, [217, 119, 6]);
       }
       if (p.lastRun.direction_deg != null) {
-        doc.setFont('helvetica', 'bold');
-        doc.setTextColor(...C.label);
-        doc.text('Direction of travel', MARGIN + 3, y);
-        doc.setFont('helvetica', 'normal');
-        doc.setTextColor(...C.body);
-        doc.text(`${p.lastRun.direction_deg} deg`, MARGIN + 48, y);
-        y += LINE + 1;
+        ctxRow('Direction', `${p.lastRun.direction_deg}\u00B0`);
       }
     }
   }
@@ -488,7 +470,8 @@ export async function generateResponsePdf(p: ResponsePdfParams): Promise<void> {
       doc.roundedRect(MARGIN, rowTop, maxW, 7.5, 0.9, 0.9, 'FD');
       doc.setFont('helvetica', 'bold');
       doc.setTextColor(126, 34, 206);
-      doc.text(`${k.replace(/_/g, ' ')}`, MARGIN + 2.5, rowTop + 5);
+      const label = k.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+      doc.text(label, MARGIN + 2.5, rowTop + 5);
       doc.setFont('helvetica', 'normal');
       doc.setTextColor(...C.body);
       doc.text(String(n), MARGIN + 75, rowTop + 5);
@@ -505,7 +488,7 @@ export async function generateResponsePdf(p: ResponsePdfParams): Promise<void> {
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(BODY);
   doc.setTextColor(...C.body);
-  const roadTxt = `Total segments with overlap: ${p.blockedRoads.total}  |  Blocked: ${p.blockedRoads.blocked}  |  Partial: ${p.blockedRoads.partial}`;
+  const roadTxt = `Affected segments: ${p.blockedRoads.total}    Blocked: ${p.blockedRoads.blocked}    Partial: ${p.blockedRoads.partial}`;
   doc.text(roadTxt, MARGIN + 3, y + 7);
   doc.setFontSize(8);
   doc.setTextColor(180, 83, 9);
@@ -529,12 +512,11 @@ export async function generateResponsePdf(p: ResponsePdfParams): Promise<void> {
   if (narrative1) {
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(185, 28, 28);
-    doc.text('Narrative (model output)', MARGIN + 3, y);
+    doc.text('Detailed analysis', MARGIN + 3, y);
     y += LINE + 1;
-    doc.setFont('helvetica', 'italic');
+    doc.setFont('helvetica', 'normal');
     doc.setTextColor(71, 85, 105);
     y = writeLines(doc, narrative1, y, maxW, MARGIN + 3);
-    doc.setFont('helvetica', 'normal');
     doc.setTextColor(...C.body);
   } else if (!structured1) {
     y = writeLinesColored(doc, 'No hazard analysis text was returned.', y, maxW, [100, 116, 139]);
@@ -550,12 +532,11 @@ export async function generateResponsePdf(p: ResponsePdfParams): Promise<void> {
   if (narrative2) {
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(5, 150, 105);
-    doc.text('Narrative (model output)', MARGIN + 3, y);
+    doc.text('Detailed plan', MARGIN + 3, y);
     y += LINE + 1;
-    doc.setFont('helvetica', 'italic');
+    doc.setFont('helvetica', 'normal');
     doc.setTextColor(71, 85, 105);
     y = writeLines(doc, narrative2, y, maxW, MARGIN + 3);
-    doc.setFont('helvetica', 'normal');
     doc.setTextColor(...C.body);
   } else if (!structured2) {
     y = writeLinesColored(doc, 'No response plan text was returned.', y, maxW, [100, 116, 139]);
