@@ -100,7 +100,7 @@ export default function MapView({ onReady }: MapViewProps) {
     );
     const [radiusKm, setRadiusKm] = useState(3);
     const [is3D, setIs3D] = useState(false);
-    const [isDayMode, setIsDayMode] = useState(false);
+    const [isDayMode, setIsDayMode] = useState(true);
     const [flyingToPlace, setFlyingToPlace] = useState<string | null>(null);
     const [lastRunMeta, setLastRunMeta] = useState<LastRunMeta | null>(null);
     const [pdfExporting, setPdfExporting] = useState(false);
@@ -537,7 +537,7 @@ export default function MapView({ onReady }: MapViewProps) {
                         (map as any).setConfigProperty(
                             "basemap",
                             "lightPreset",
-                            "night",
+                            "day",
                         );
                         map.once("idle", () => {
                             if (hasReportedReadyRef.current) return;
