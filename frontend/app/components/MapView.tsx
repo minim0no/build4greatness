@@ -36,8 +36,13 @@ function makeCircleGeoJSON(center: [number, number], radiusKm: number): GeoJSON.
   };
 }
 
-export default function MapView() {
+interface MapViewProps {
+  onReady?: () => void;
+}
+
+export default function MapView({ onReady }: MapViewProps) {
   const mapRef = useRef<MapRef>(null);
+  const hasReportedReadyRef = useRef(false);
   const [selectedPoint, setSelectedPoint] = useState<[number, number] | null>(null);
   const [is3D, setIs3D] = useState(true);
   const [isDayMode, setIsDayMode] = useState(false);
@@ -226,6 +231,13 @@ export default function MapView() {
             });
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             (map as any).setConfigProperty('basemap', 'lightPreset', 'night');
+            map.once('idle', () => {
+              if (hasReportedReadyRef.current) return;
+              hasReportedReadyRef.current = true;
+              window.setTimeout(() => {
+                onReady?.();
+              }, 120);
+            });
           }}
         >
           {selectedPoint && (

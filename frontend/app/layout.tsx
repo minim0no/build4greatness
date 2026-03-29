@@ -13,8 +13,14 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "CrisisPath",
-  description: "AI-powered disaster simulation and decision-support platform",
+  title: "Atlas",
+  applicationName: "Atlas",
+  description: "Atlas AI-powered disaster simulation and decision-support platform",
+  icons: {
+    icon: "/logo.png",
+    shortcut: "/logo.png",
+    apple: "/logo.png",
+  },
 };
 
 export default function RootLayout({
