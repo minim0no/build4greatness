@@ -89,3 +89,42 @@ input[type='range']::-webkit-slider-thumb {
   border-radius: 0.75rem;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.06) inset;
 }
+
+/* Rain overlay — shown during flood simulations */
+.rain-overlay__layer {
+  position: absolute;
+  inset: -60%;
+  width: 220%;
+  height: 220%;
+  opacity: 0.4;
+  background-image: repeating-linear-gradient(
+    104deg,
+    transparent 0,
+    transparent 5px,
+    rgba(186, 210, 235, 0.5) 5px,
+    rgba(186, 210, 235, 0.5) 6px
+  );
+  animation: rain-drift 0.52s linear infinite;
+  will-change: transform;
+}
+
+.rain-overlay__layer--slow {
+  opacity: 0.22;
+  animation-duration: 0.78s;
+  animation-delay: -0.18s;
+}
+
+.rain-overlay__layer--fast {
+  opacity: 0.28;
+  animation-duration: 0.36s;
+  animation-delay: -0.08s;
+}
+
+@keyframes rain-drift {
+  from {
+    transform: translate3d(0, -140px, 0);
+  }
+  to {
+    transform: translate3d(-28px, 100vh, 0);
+  }
+}

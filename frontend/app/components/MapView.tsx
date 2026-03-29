@@ -10,6 +10,7 @@ import AnalysisPanel from './AnalysisPanel';
 import ControlPanel from './ControlPanel';
 import HazardLayer from './HazardLayer';
 import MapControls from './MapControls';
+import RainOverlay from './RainOverlay';
 import StatusBar from './StatusBar';
 
 const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN || '';
@@ -44,6 +45,9 @@ export default function MapView() {
   const sim = useSimulation();
 
   const isLoading = !['idle', 'complete', 'error'].includes(sim.status);
+
+  const floodSessionActive =
+    sim.disasterType === 'flood' && sim.status !== 'idle' && sim.status !== 'error';
 
   const handleMapClick = useCallback((e: MapMouseEvent) => {
     setSelectedPoint([e.lngLat.lng, e.lngLat.lat]);
@@ -315,6 +319,8 @@ export default function MapView() {
           ))}
         </Map>
       </div>
+
+      <RainOverlay active={floodSessionActive} />
 
       {/* Left column: Control Panel + Status (top) / Stats (bottom) */}
       <div className="absolute top-4 bottom-4 left-4 z-20 w-80 flex flex-col gap-3 pointer-events-none">
