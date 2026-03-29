@@ -166,8 +166,14 @@ async def run_simulation_analyst(
     road_summary: dict | None = None,
 ) -> AsyncGenerator[tuple[str, str | dict], None]:
     """Agent 1: Analyze flood simulation results and infrastructure impact."""
-    system_prompt = f"""You are a flood risk analyst for CrisisPath, an emergency response platform.
-Analyze FEMA National Flood Hazard Layer data and local infrastructure to identify impacts.
+    system_prompt = f"""You are a flood risk analyst for CrisisPath, an educational disaster simulation tool.
+Analyze FEMA National Flood Hazard Layer data and local infrastructure to identify potential impacts.
+
+Keep your analysis grounded and proportional to the data:
+- FEMA flood zones show *potential* risk areas, not active flooding. Frame findings as "areas within flood zones" not "flooded areas."
+- Be specific about what the data actually shows vs. what you're inferring.
+- Don't dramatize — a 5% flood coverage area is low risk, not a catastrophe.
+- Focus on practical awareness: which roads/facilities are in flood zones, not Hollywood disaster scenarios.
 
 You MUST output a JSON block wrapped in ```json ... ``` with this structure:
 {_ANALYST_JSON_SCHEMA}
@@ -208,13 +214,20 @@ async def run_response_planner(
     bbox: list[float],
 ) -> AsyncGenerator[tuple[str, str | dict], None]:
     """Agent 2: Generate actionable evacuation and response plan."""
-    system_prompt = f"""You are an emergency response planner for CrisisPath.
-Given a flood analysis, generate actionable evacuation and deployment plans.
+    system_prompt = f"""You are a preparedness planner for CrisisPath, an educational disaster simulation tool.
+Given a flood risk analysis, suggest practical preparedness and response ideas.
+
+Keep recommendations realistic and proportional:
+- This is a planning tool, not an active emergency. Frame suggestions as "if flooding occurs" preparedness steps.
+- Suggest things normal people and local agencies can actually do: check evacuation routes, know shelter locations, avoid low-lying roads, sign up for alerts.
+- Do NOT suggest deploying rescue boats, mobilizing the National Guard, or other large-scale operations that are beyond the scope of local planning.
+- Focus on awareness and preparedness: "residents near X should know their evacuation route" not "deploy search and rescue teams to X."
+- Keep it calm and helpful, not alarmist.
 
 You MUST output a JSON block wrapped in ```json ... ``` with this structure:
 {_PLANNER_JSON_SCHEMA}
 
-After the JSON block, provide a clear markdown narrative with the top 5 priority actions for emergency responders."""
+After the JSON block, provide a clear markdown narrative with the top 5 practical preparedness steps."""
 
     user_message = f"""{_data_warnings(infrastructure)}Flood area: {bbox}
 
@@ -234,7 +247,7 @@ After the JSON block, provide a clear markdown narrative with the top 5 priority
 - Fire stations: {json.dumps(infrastructure.get('fire_stations', [])[:5])}
 - Police: {json.dumps(infrastructure.get('police', [])[:5])}
 
-Generate an actionable emergency response plan with specific evacuation routes, shelter assignments, and resource deployment recommendations."""
+Suggest practical preparedness steps: evacuation route awareness, nearby shelter locations, and what residents in flood zones should keep in mind."""
 
     async for item in _run_agent(system_prompt, user_message, _PLANNER_FALLBACK):
         yield item
@@ -247,8 +260,14 @@ async def run_tornado_analyst(
     road_summary: dict | None = None,
 ) -> AsyncGenerator[tuple[str, str | dict], None]:
     """Analyze tornado simulation results and infrastructure impact."""
-    system_prompt = f"""You are a tornado damage analyst for CrisisPath, an emergency response platform.
-Analyze tornado path simulation data and local infrastructure to identify impacts.
+    system_prompt = f"""You are a tornado risk analyst for CrisisPath, an educational disaster simulation tool.
+Analyze a simulated tornado path and local infrastructure to identify potential impacts.
+
+Keep your analysis grounded and proportional:
+- This is a simulation, not a real tornado. Frame findings as "if a tornado followed this path" scenarios.
+- Be specific about what's actually in the path vs. nearby.
+- Focus on practical awareness: which buildings and roads would be affected, not worst-case destruction fantasies.
+- Scale your concern to the EF rating — an EF1 is not the same as an EF5.
 
 You MUST output a JSON block wrapped in ```json ... ``` with this structure:
 {_ANALYST_JSON_SCHEMA}
@@ -286,19 +305,20 @@ async def run_tornado_planner(
     bbox: list[float],
 ) -> AsyncGenerator[tuple[str, str | dict], None]:
     """Generate actionable tornado response and shelter plan."""
-    system_prompt = f"""You are an emergency response planner for CrisisPath specializing in tornado events.
-Given a tornado damage analysis, generate actionable shelter-in-place and response plans.
+    system_prompt = f"""You are a preparedness planner for CrisisPath, an educational disaster simulation tool.
+Given a simulated tornado analysis, suggest practical preparedness and shelter recommendations.
 
-Key tornado-specific considerations:
-- Shelter-in-place vs evacuation (basements, interior rooms, storm cellars)
-- Debris clearance and search & rescue priorities
-- Power restoration and gas leak containment
-- Hospital surge capacity for trauma injuries
+Keep recommendations realistic and proportional:
+- This is a simulation for planning purposes. Frame suggestions as "if a tornado strikes this area" preparedness steps.
+- Focus on things people can actually do: know where to shelter (basements, interior rooms), identify safe rooms, know evacuation routes away from the path.
+- Do NOT suggest large-scale military-style operations, deploying heavy equipment fleets, or other unrealistic responses.
+- Practical tips: know your nearest shelter, have an emergency kit, avoid areas with downed power lines, check on neighbors.
+- Scale recommendations to the EF rating — don't treat every tornado like it's the end of the world.
 
 You MUST output a JSON block wrapped in ```json ... ``` with this structure:
 {_PLANNER_JSON_SCHEMA}
 
-After the JSON block, provide a clear markdown narrative with the top 5 priority actions for emergency responders."""
+After the JSON block, provide a clear markdown narrative with the top 5 practical preparedness steps."""
 
     user_message = f"""{_data_warnings(infrastructure)}Tornado area: {bbox}
 
@@ -317,7 +337,97 @@ After the JSON block, provide a clear markdown narrative with the top 5 priority
 - Fire stations: {json.dumps(infrastructure.get('fire_stations', [])[:5])}
 - Police: {json.dumps(infrastructure.get('police', [])[:5])}
 
-Generate an actionable emergency response plan focusing on search & rescue, debris clearance, shelter operations, and utility restoration."""
+Suggest practical preparedness steps: where to shelter, routes to avoid, nearby safe locations, and what residents in the path should keep in mind."""
+
+    async for item in _run_agent(system_prompt, user_message, _PLANNER_FALLBACK):
+        yield item
+
+
+async def run_asteroid_analyst(
+    asteroid_stats: dict,
+    infrastructure: dict,
+    bbox: list[float],
+    road_summary: dict | None = None,
+) -> AsyncGenerator[tuple[str, str | dict], None]:
+    """Analyze asteroid impact simulation results and infrastructure damage."""
+    system_prompt = f"""You are an asteroid impact analyst for CrisisPath, an educational disaster simulation tool.
+Analyze a hypothetical asteroid impact simulation and local infrastructure to identify potential damage zones.
+
+This is a fun "what-if" scenario tool. Keep the tone informative but not alarming:
+- Frame everything as "in this simulation" or "hypothetically."
+- Describe damage zones clearly (fireball, blast, shockwave, tremor) but don't write like a disaster movie script.
+- Focus on which infrastructure falls in which zone — keep it factual.
+
+You MUST output a JSON block wrapped in ```json ... ``` with this structure:
+{_ANALYST_JSON_SCHEMA}
+
+After the JSON block, provide a brief markdown narrative (3-5 bullet points) explaining the key findings."""
+
+    user_message = f"""{_data_warnings(infrastructure)}Asteroid impact data for area {bbox}:
+
+**Impact Statistics:**
+- Impactor mass: {asteroid_stats.get('mass_kg', 0)} kg
+- Energy: {asteroid_stats.get('energy_megatons', 0)} megatons TNT equivalent
+- Estimated crater diameter: {asteroid_stats.get('crater_diameter_km', 0)} km
+- Maximum damage radius: {asteroid_stats.get('max_damage_radius_km', 0)} km
+- Total affected area: {asteroid_stats.get('affected_area_km2', 0)} km²
+- Summary: {asteroid_stats.get('risk_summary', 'N/A')}
+
+**Infrastructure in area:**
+{_format_infrastructure_block(infrastructure)}
+- Power: {json.dumps(infrastructure.get('power', [])[:5])}
+
+Road names in area: {json.dumps([r['name'] for r in infrastructure.get('roads', [])[:20]])}
+
+**Road Damage Analysis (spatial intersection with impact zones):**
+{_format_road_summary_block(road_summary)}
+
+Asteroid impacts cause simultaneous thermal, blast, and seismic damage. Infrastructure in the extreme/high zones is likely destroyed. Focus on what survives in the medium/low zones for response planning."""
+
+    async for item in _run_agent(system_prompt, user_message, _ANALYST_FALLBACK):
+        yield item
+
+
+async def run_asteroid_planner(
+    asteroid_stats: dict,
+    analyst_data: dict,
+    infrastructure: dict,
+    bbox: list[float],
+) -> AsyncGenerator[tuple[str, str | dict], None]:
+    """Generate actionable asteroid impact response and evacuation plan."""
+    system_prompt = f"""You are a preparedness planner for CrisisPath, an educational disaster simulation tool.
+Given a hypothetical asteroid impact analysis, suggest what preparedness would look like for this scenario.
+
+This is a "what-if" educational tool — keep it interesting but grounded:
+- Frame as "in this scenario" — nobody is actually deploying anything.
+- For inner zones: acknowledge these are total loss areas in the simulation. Focus on outer zones where preparation matters.
+- Suggest realistic awareness steps: know evacuation routes, understand blast radius distances, identify which shelters are outside the impact zone.
+- Don't suggest things like "mobilize FEMA" or "deploy military assets" — focus on what individuals and communities can learn from the simulation.
+
+You MUST output a JSON block wrapped in ```json ... ``` with this structure:
+{_PLANNER_JSON_SCHEMA}
+
+After the JSON block, provide a clear markdown narrative with the top 5 takeaways from this simulation."""
+
+    user_message = f"""{_data_warnings(infrastructure)}Impact area: {bbox}
+
+**Asteroid Impact Statistics:**
+- Impactor mass: {asteroid_stats.get('mass_kg', 0)} kg
+- Energy: {asteroid_stats.get('energy_megatons', 0)} megatons TNT equivalent
+- Crater diameter: {asteroid_stats.get('crater_diameter_km', 0)} km
+- Max damage radius: {asteroid_stats.get('max_damage_radius_km', 0)} km
+- Affected area: {asteroid_stats.get('affected_area_km2', 0)} km²
+
+**Analyst Assessment:**
+{json.dumps(analyst_data, indent=2)}
+
+**Available Infrastructure (outside destruction zone):**
+- Hospitals: {json.dumps(infrastructure.get('hospitals', [])[:10])}
+- Shelters: {json.dumps(infrastructure.get('shelters', [])[:10])}
+- Fire stations: {json.dumps(infrastructure.get('fire_stations', [])[:5])}
+- Police: {json.dumps(infrastructure.get('police', [])[:5])}
+
+What can we learn from this simulation? Highlight which areas would be most affected, where the nearest safe zones are, and what general preparedness lessons apply."""
 
     async for item in _run_agent(system_prompt, user_message, _PLANNER_FALLBACK):
         yield item

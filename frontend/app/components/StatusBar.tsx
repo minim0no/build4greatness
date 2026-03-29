@@ -24,10 +24,18 @@ const TORNADO_STAGES: { key: SimulationStatus; label: string }[] = [
   { key: 'complete', label: 'Complete' },
 ];
 
+const ASTEROID_STAGES: { key: SimulationStatus; label: string }[] = [
+  { key: 'fetching_hazard_data', label: 'Impact Sim' },
+  { key: 'fetching_infrastructure', label: 'Infrastructure' },
+  { key: 'analyzing', label: 'AI Analysis' },
+  { key: 'planning', label: 'Response Plan' },
+  { key: 'complete', label: 'Complete' },
+];
+
 export default function StatusBar({ status, message, disasterType }: StatusBarProps) {
   if (status === 'idle') return null;
 
-  const stages = disasterType === 'tornado' ? TORNADO_STAGES : FLOOD_STAGES;
+  const stages = disasterType === 'asteroid' ? ASTEROID_STAGES : disasterType === 'tornado' ? TORNADO_STAGES : FLOOD_STAGES;
 
   const stageOrder: Record<string, number> = {};
   stages.forEach((s, i) => {
@@ -48,9 +56,9 @@ export default function StatusBar({ status, message, disasterType }: StatusBarPr
               <div
                 className={`h-1.5 flex-1 rounded-full transition-colors ${
                   isComplete
-                    ? disasterType === 'tornado' ? 'bg-amber-500' : 'bg-blue-500'
+                    ? disasterType === 'asteroid' ? 'bg-orange-500' : disasterType === 'tornado' ? 'bg-amber-500' : 'bg-blue-500'
                     : isCurrent
-                      ? disasterType === 'tornado' ? 'bg-amber-400 animate-pulse' : 'bg-blue-400 animate-pulse'
+                      ? disasterType === 'asteroid' ? 'bg-orange-400 animate-pulse' : disasterType === 'tornado' ? 'bg-amber-400 animate-pulse' : 'bg-blue-400 animate-pulse'
                       : 'bg-white/10'
                 }`}
               />

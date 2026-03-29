@@ -408,6 +408,44 @@ export default function MapView({ onReady }: MapViewProps) {
     const renderStats = () => {
         if (!sim.stats) return null;
 
+        if (sim.disasterType === "asteroid") {
+            const stats = sim.stats as {
+                mass_kg: number;
+                energy_megatons: number;
+                crater_diameter_km: number;
+                max_damage_radius_km: number;
+                affected_area_km2: number;
+            };
+            const massLabel =
+                stats.mass_kg >= 1e9
+                    ? `${(stats.mass_kg / 1e9).toFixed(1)}B kg`
+                    : stats.mass_kg >= 1e6
+                      ? `${(stats.mass_kg / 1e6).toFixed(1)}M kg`
+                      : `${(stats.mass_kg / 1e3).toFixed(0)}K kg`;
+            return (
+                <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+                    <span className="text-white/50">Mass:</span>
+                    <span className="font-mono">{massLabel}</span>
+                    <span className="text-white/50">Energy:</span>
+                    <span className="font-mono">
+                        {stats.energy_megatons.toFixed(4)} MT
+                    </span>
+                    <span className="text-white/50">Crater:</span>
+                    <span className="font-mono">
+                        {stats.crater_diameter_km} km
+                    </span>
+                    <span className="text-white/50">Damage radius:</span>
+                    <span className="font-mono">
+                        {stats.max_damage_radius_km} km
+                    </span>
+                    <span className="text-white/50">Affected area:</span>
+                    <span className="font-mono">
+                        {stats.affected_area_km2} km²
+                    </span>
+                </div>
+            );
+        }
+
         if (sim.disasterType === "tornado") {
             const stats = sim.stats as {
                 ef_scale: number;
@@ -458,7 +496,11 @@ export default function MapView({ onReady }: MapViewProps) {
 
     // Dynamic infrastructure legend
     const disasterInfraLabel =
-        sim.disasterType === "tornado" ? "Storm Shelters" : "Dams/Dykes";
+        sim.disasterType === "tornado"
+            ? "Storm Shelters"
+            : sim.disasterType === "asteroid"
+              ? "Emergency Infra"
+              : "Dams/Dykes";
 
     return (
         <div

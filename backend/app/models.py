@@ -2,7 +2,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-DisasterType = Literal["flood", "tornado"]
+DisasterType = Literal["flood", "tornado", "asteroid"]
 
 
 class SimulationRequest(BaseModel):
@@ -15,6 +15,8 @@ class SimulationRequest(BaseModel):
     # Tornado params
     ef_scale: int = Field(default=3, ge=0, le=5)
     direction_deg: float = Field(default=45.0, ge=0, lt=360)
+    # Asteroid params
+    mass_kg: float = Field(default=1e6, ge=1, le=1e12)
 
 
 class FloodStats(BaseModel):
@@ -35,9 +37,18 @@ class TornadoStats(BaseModel):
     risk_summary: str
 
 
+class AsteroidStats(BaseModel):
+    mass_kg: float
+    energy_megatons: float
+    crater_diameter_km: float
+    max_damage_radius_km: float
+    affected_area_km2: float
+    risk_summary: str
+
+
 class SimulationResponse(BaseModel):
     scenario_id: str
     disaster_type: DisasterType = "flood"
     hazard_geojson: dict
-    stats: FloodStats | TornadoStats
+    stats: FloodStats | TornadoStats | AsteroidStats
     bbox: list[float]  # [min_lng, min_lat, max_lng, max_lat]
