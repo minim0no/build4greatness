@@ -5,6 +5,16 @@ import 'mapbox-gl/dist/mapbox-gl.css';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Map, { Layer, Source, type MapRef, type MapMouseEvent, type MapEvent } from 'react-map-gl/mapbox';
 
+import {
+  compressRasterForPdf,
+  countBlockedRoads,
+  fetchUrlAsDataUrl,
+  generateResponsePdf,
+  infrastructureCountsFromPayload,
+  PDF_LOGO_JPEG_QUALITY,
+  PDF_LOGO_MAX_WIDTH_PX,
+  type LastRunMeta,
+} from '../lib/responsePdf';
 import { useSimulation, type DisasterType } from '../hooks/useSimulation';
 import AnalysisPanel from './AnalysisPanel';
 import ControlPanel from './ControlPanel';
@@ -73,6 +83,8 @@ export default function MapView() {
   const [is3D, setIs3D] = useState(false);
   const [isDayMode, setIsDayMode] = useState(true);
   const [flyingToPlace, setFlyingToPlace] = useState<string | null>(null);
+  const [lastRunMeta, setLastRunMeta] = useState<LastRunMeta | null>(null);
+  const [pdfExporting, setPdfExporting] = useState(false);
   const sim = useSimulation();
 
   const isLoading = !['idle', 'complete', 'error'].includes(sim.status);
@@ -93,6 +105,12 @@ export default function MapView() {
       direction_deg?: number;
     }) => {
       if (!selectedPoint) return;
+      setLastRunMeta({
+        radius_km: params.radius_km,
+        rainfall_mm: params.rainfall_mm,
+        ef_scale: params.ef_scale,
+        direction_deg: params.direction_deg,
+      });
       sim.startSimulation({
         center_lng: selectedPoint[0],
         center_lat: selectedPoint[1],
@@ -101,6 +119,63 @@ export default function MapView() {
     },
     [selectedPoint, sim.startSimulation]
   );
+
+  const handleDownloadResponsePdf = useCallback(async () => {
+    setPdfExporting(true);
+    try {
+      let logoDataUrl: string | null = null;
+      let logoW = 0;
+      let logoH = 0;
+      const rawLogo = await fetchUrlAsDataUrl(`${window.location.origin}/logoblack.png`);
+      if (rawLogo) {
+        const compressedLogo = await compressRasterForPdf(
+          rawLogo,
+          PDF_LOGO_MAX_WIDTH_PX,
+          PDF_LOGO_JPEG_QUALITY
+        );
+        if (compressedLogo) {
+          logoDataUrl = compressedLogo.dataUrl;
+          logoW = compressedLogo.width;
+          logoH = compressedLogo.height;
+        }
+      }
+
+      const statsObj = sim.stats ? { ...sim.stats } as unknown as Record<string, unknown> : null;
+      await generateResponsePdf({
+        logoDataUrl,
+        logoWidthPx: logoW,
+        logoHeightPx: logoH,
+        disasterType: sim.disasterType,
+        scenarioId: sim.scenarioId,
+        generatedAt: new Date(),
+        location: selectedPoint ? { lat: selectedPoint[1], lng: selectedPoint[0] } : null,
+        radiusKm,
+        lastRun: lastRunMeta,
+        stats: statsObj,
+        agent1Text: sim.agent1Text,
+        agent1Data: sim.agent1Data,
+        agent2Text: sim.agent2Text,
+        agent2Data: sim.agent2Data,
+        blockedRoads: countBlockedRoads(sim.blockedRoadsGeoJSON),
+        infrastructureCounts: infrastructureCountsFromPayload(sim.infrastructure),
+      });
+    } finally {
+      setPdfExporting(false);
+    }
+  }, [
+    sim.agent1Data,
+    sim.agent1Text,
+    sim.agent2Data,
+    sim.agent2Text,
+    sim.blockedRoadsGeoJSON,
+    sim.disasterType,
+    sim.infrastructure,
+    sim.scenarioId,
+    sim.stats,
+    selectedPoint,
+    radiusKm,
+    lastRunMeta,
+  ]);
 
   const easeOutCubic = useCallback((t: number) => 1 - (1 - t) ** 3, []);
 
@@ -470,7 +545,7 @@ export default function MapView() {
 
       {/* Right column: Analysis Panel (top) / Legend + Controls (bottom) */}
       <div className="absolute top-4 bottom-4 right-4 z-20 w-96 flex flex-col gap-3 pointer-events-none">
-        <div className="min-h-0 overflow-y-auto pointer-events-auto">
+        <div className="min-h-0 overflow-y-auto pointer-events-auto flex flex-col gap-2">
           <AnalysisPanel
             agent1Text={sim.agent1Text}
             agent1Data={sim.agent1Data}
@@ -479,6 +554,39 @@ export default function MapView() {
             isStreaming={isLoading}
             disasterType={sim.disasterType}
           />
+          {sim.status === 'complete' && sim.stats && (
+            <button
+              type="button"
+              onClick={() => void handleDownloadResponsePdf()}
+              disabled={pdfExporting}
+              className="glass-panel w-full px-3 py-2.5 text-left text-sm font-medium text-white border border-white/15 hover:bg-white/10 disabled:opacity-50 disabled:cursor-wait transition-colors rounded-xl shrink-0"
+            >
+              {pdfExporting ? (
+                <span className="flex items-center gap-2">
+                  <span className="h-4 w-4 border-2 border-white/25 border-t-white rounded-full animate-spin shrink-0" />
+                  Building PDF…
+                </span>
+              ) : (
+                <span className="flex items-center gap-2.5">
+                  <svg
+                    className="w-4 h-4 shrink-0 opacity-90"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    strokeWidth={2}
+                    aria-hidden
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
+                    />
+                  </svg>
+                  Download response report (PDF)
+                </span>
+              )}
+            </button>
+          )}
         </div>
         <div className="flex-1" />
         <div className="flex flex-col items-end gap-2 pointer-events-auto flex-shrink-0">
