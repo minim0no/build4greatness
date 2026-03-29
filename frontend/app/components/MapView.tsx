@@ -2,14 +2,16 @@
 
 import 'mapbox-gl/dist/mapbox-gl.css';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
-import Map, { Layer, Marker, Source, type MapRef, type MapMouseEvent, type MapEvent } from 'react-map-gl/mapbox';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import Map, { Layer, Source, type MapRef, type MapMouseEvent, type MapEvent } from 'react-map-gl/mapbox';
 
 import { useSimulation, type DisasterType } from '../hooks/useSimulation';
 import AnalysisPanel from './AnalysisPanel';
 import ControlPanel from './ControlPanel';
+import FlyingToBanner from './FlyingToBanner';
 import HazardLayer from './HazardLayer';
 import MapControls from './MapControls';
+import MapSearchBar from './MapSearchBar';
 import RainOverlay from './RainOverlay';
 import StatusBar from './StatusBar';
 
@@ -37,11 +39,40 @@ function makeCircleGeoJSON(center: [number, number], radiusKm: number): GeoJSON.
   };
 }
 
+/** Small square footprint (meters) for 3D extrusion at a POI — reads as a simplified building block. */
+function makeSquareFootprint(center: [number, number], halfSideM: number): GeoJSON.Polygon {
+  const [lng, lat] = center;
+  const cosLat = Math.cos((lat * Math.PI) / 180);
+  const dxDeg = halfSideM / (111_320 * cosLat);
+  const dyDeg = halfSideM / 111_320;
+  const ring: [number, number][] = [
+    [lng + dxDeg, lat + dyDeg],
+    [lng + dxDeg, lat - dyDeg],
+    [lng - dxDeg, lat - dyDeg],
+    [lng - dxDeg, lat + dyDeg],
+    [lng + dxDeg, lat + dyDeg],
+  ];
+  return { type: 'Polygon', coordinates: [ring] };
+}
+
+const INFRA_EXTRUSION_HEIGHT_M: Record<string, number> = {
+  hospital: 34,
+  shelter: 14,
+  fire_station: 22,
+  police: 24,
+  ambulance: 16,
+  fuel: 12,
+  power: 30,
+  disaster_infra: 26,
+};
+
 export default function MapView() {
   const mapRef = useRef<MapRef>(null);
   const [selectedPoint, setSelectedPoint] = useState<[number, number] | null>(null);
-  const [is3D, setIs3D] = useState(true);
-  const [isDayMode, setIsDayMode] = useState(false);
+  const [radiusKm, setRadiusKm] = useState(3);
+  const [is3D, setIs3D] = useState(false);
+  const [isDayMode, setIsDayMode] = useState(true);
+  const [flyingToPlace, setFlyingToPlace] = useState<string | null>(null);
   const sim = useSimulation();
 
   const isLoading = !['idle', 'complete', 'error'].includes(sim.status);
@@ -71,20 +102,22 @@ export default function MapView() {
     [selectedPoint, sim.startSimulation]
   );
 
+  const easeOutCubic = useCallback((t: number) => 1 - (1 - t) ** 3, []);
+
   const toggle3D = useCallback(() => {
     const map = mapRef.current?.getMap();
     if (!map) return;
     if (is3D) {
-      map.easeTo({ pitch: 0, duration: 1000 });
+      map.easeTo({ pitch: 0, duration: 1000, easing: easeOutCubic });
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (map as any).setProjection('mercator');
     } else {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (map as any).setProjection('globe');
-      map.easeTo({ pitch: 60, duration: 1000 });
+      map.easeTo({ pitch: 60, duration: 1000, easing: easeOutCubic });
     }
     setIs3D((prev) => !prev);
-  }, [is3D]);
+  }, [is3D, easeOutCubic]);
 
   const toggleDayNight = useCallback(() => {
     const map = mapRef.current?.getMap();
@@ -94,6 +127,25 @@ export default function MapView() {
     (map as any).setConfigProperty('basemap', 'lightPreset', newMode ? 'day' : 'night');
     setIsDayMode(newMode);
   }, [isDayMode]);
+
+  /** After search fly ends: hide banner and ease into globe + tilted 3D view. */
+  const completeSearchFlight = useCallback(() => {
+    setFlyingToPlace(null);
+    const map = mapRef.current?.getMap();
+    if (!map) return;
+
+    setIs3D(true);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (map as any).setProjection('globe');
+
+    const pitch = map.getPitch();
+
+    map.easeTo({
+      pitch: 60,
+      duration: pitch >= 55 ? 1200 : 3400,
+      easing: easeOutCubic,
+    });
+  }, [easeOutCubic]);
 
   // Fit map to bbox when hazard result arrives
   const prevBbox = useRef<string | null>(null);
@@ -111,51 +163,86 @@ export default function MapView() {
     );
   }, [sim.bbox]);
 
-  // Build infrastructure GeoJSON for markers
-  const infrastructureMarkers = sim.infrastructure
-    ? [
-        ...((sim.infrastructure.hospitals as Array<{ name: string; lat: number; lon: number }>) || []).map((f) => ({
-          ...f,
-          type: 'hospital' as const,
-          color: '#ef4444',
-        })),
-        ...((sim.infrastructure.shelters as Array<{ name: string; lat: number; lon: number }>) || []).map((f) => ({
-          ...f,
-          type: 'shelter' as const,
-          color: '#22c55e',
-        })),
-        ...((sim.infrastructure.fire_stations as Array<{ name: string; lat: number; lon: number }>) || []).map((f) => ({
-          ...f,
-          type: 'fire_station' as const,
-          color: '#f97316',
-        })),
-        ...((sim.infrastructure.police as Array<{ name: string; lat: number; lon: number }>) || []).map((f) => ({
-          ...f,
-          type: 'police' as const,
-          color: '#a855f7',
-        })),
-        ...((sim.infrastructure.ambulance_stations as Array<{ name: string; lat: number; lon: number }>) || []).map((f) => ({
-          ...f,
-          type: 'ambulance' as const,
-          color: '#f43f5e',
-        })),
-        ...((sim.infrastructure.fuel_stations as Array<{ name: string; lat: number; lon: number }>) || []).map((f) => ({
-          ...f,
-          type: 'fuel' as const,
-          color: '#eab308',
-        })),
-        ...((sim.infrastructure.power as Array<{ name: string; lat: number; lon: number }>) || []).map((f) => ({
-          ...f,
-          type: 'power' as const,
-          color: '#f59e0b',
-        })),
-        ...((sim.infrastructure.disaster_infrastructure as Array<{ name: string; lat: number; lon: number }>) || []).map((f) => ({
-          ...f,
-          type: 'disaster_infra' as const,
-          color: '#06b6d4',
-        })),
-      ]
-    : [];
+  type InfraMarker = {
+    name: string;
+    lat: number;
+    lon: number;
+    type:
+      | 'hospital'
+      | 'shelter'
+      | 'fire_station'
+      | 'police'
+      | 'ambulance'
+      | 'fuel'
+      | 'power'
+      | 'disaster_infra';
+    color: string;
+  };
+
+  const infrastructureMarkers: InfraMarker[] = useMemo(() => {
+    if (!sim.infrastructure) return [];
+    return [
+      ...((sim.infrastructure.hospitals as Array<{ name: string; lat: number; lon: number }>) || []).map((f) => ({
+        ...f,
+        type: 'hospital' as const,
+        color: '#ef4444',
+      })),
+      ...((sim.infrastructure.shelters as Array<{ name: string; lat: number; lon: number }>) || []).map((f) => ({
+        ...f,
+        type: 'shelter' as const,
+        color: '#22c55e',
+      })),
+      ...((sim.infrastructure.fire_stations as Array<{ name: string; lat: number; lon: number }>) || []).map((f) => ({
+        ...f,
+        type: 'fire_station' as const,
+        color: '#f97316',
+      })),
+      ...((sim.infrastructure.police as Array<{ name: string; lat: number; lon: number }>) || []).map((f) => ({
+        ...f,
+        type: 'police' as const,
+        color: '#a855f7',
+      })),
+      ...((sim.infrastructure.ambulance_stations as Array<{ name: string; lat: number; lon: number }>) || []).map((f) => ({
+        ...f,
+        type: 'ambulance' as const,
+        color: '#f43f5e',
+      })),
+      ...((sim.infrastructure.fuel_stations as Array<{ name: string; lat: number; lon: number }>) || []).map((f) => ({
+        ...f,
+        type: 'fuel' as const,
+        color: '#eab308',
+      })),
+      ...((sim.infrastructure.power as Array<{ name: string; lat: number; lon: number }>) || []).map((f) => ({
+        ...f,
+        type: 'power' as const,
+        color: '#f59e0b',
+      })),
+      ...((sim.infrastructure.disaster_infrastructure as Array<{ name: string; lat: number; lon: number }>) || []).map((f) => ({
+        ...f,
+        type: 'disaster_infra' as const,
+        color: '#06b6d4',
+      })),
+    ];
+  }, [sim.infrastructure]);
+
+  const infrastructureExtrusionsGeoJSON = useMemo((): GeoJSON.FeatureCollection | null => {
+    if (!infrastructureMarkers.length) return null;
+    const halfFootprintM = 18;
+    return {
+      type: 'FeatureCollection',
+      features: infrastructureMarkers.map((m, i) => ({
+        type: 'Feature',
+        id: i,
+        properties: {
+          infra_type: m.type,
+          height: INFRA_EXTRUSION_HEIGHT_M[m.type] ?? 20,
+          color: m.color,
+          name: m.name,
+        },
+        geometry: makeSquareFootprint([m.lon, m.lat], halfFootprintM),
+      })),
+    };
+  }, [infrastructureMarkers]);
 
   // Dynamic stats based on disaster type
   const renderStats = () => {
@@ -208,10 +295,11 @@ export default function MapView() {
         <Map
           ref={mapRef}
           initialViewState={{
-            longitude: -95.37,
-            latitude: 29.76,
-            zoom: 12,
-            pitch: 45,
+            longitude: 0,
+            latitude: 18,
+            zoom: 1.35,
+            pitch: 0,
+            bearing: 0,
           }}
           style={{ width: '100%', height: '100%' }}
           mapStyle="mapbox://styles/mapbox/standard"
@@ -229,11 +317,35 @@ export default function MapView() {
               'star-intensity': 0.6,
             });
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            (map as any).setConfigProperty('basemap', 'lightPreset', 'night');
+            (map as any).setConfigProperty('basemap', 'lightPreset', 'day');
           }}
         >
+          {/* Scan radius preview (replaces pin) */}
           {selectedPoint && (
-            <Marker longitude={selectedPoint[0]} latitude={selectedPoint[1]} color="#ef4444" />
+            <Source
+              id="selection-radius-source"
+              type="geojson"
+              data={makeCircleGeoJSON(selectedPoint, radiusKm)}
+            >
+              <Layer
+                id="selection-radius-fill"
+                type="fill"
+                paint={{
+                  'fill-color': '#3b82f6',
+                  'fill-opacity': 0.12,
+                }}
+              />
+              <Layer
+                id="selection-radius-line"
+                type="line"
+                paint={{
+                  'line-color': '#60a5fa',
+                  'line-width': 2.5,
+                  'line-opacity': 0.95,
+                  'line-dasharray': [4, 3],
+                }}
+              />
+            </Source>
           )}
 
           <HazardLayer geojson={sim.hazardGeoJSON} disasterType={sim.disasterType} />
@@ -307,20 +419,32 @@ export default function MapView() {
             </Source>
           )}
 
-          {/* Infrastructure markers */}
-          {infrastructureMarkers.map((marker, i) => (
-            <Marker
-              key={`${marker.type}-${i}`}
-              longitude={marker.lon}
-              latitude={marker.lat}
-              color={marker.color}
-              scale={0.7}
-            />
-          ))}
+          {/* Infrastructure as colored 3D extrusions (footprints at POI coordinates) */}
+          {infrastructureExtrusionsGeoJSON && (
+            <Source id="infrastructure-extrusions-source" type="geojson" data={infrastructureExtrusionsGeoJSON}>
+              <Layer
+                id="infrastructure-extrusions"
+                type="fill-extrusion"
+                paint={{
+                  'fill-extrusion-color': ['get', 'color'],
+                  'fill-extrusion-height': ['get', 'height'],
+                  'fill-extrusion-base': 0,
+                  'fill-extrusion-opacity': 0.94,
+                  'fill-extrusion-vertical-gradient': true,
+                }}
+              />
+            </Source>
+          )}
         </Map>
       </div>
 
       <RainOverlay active={floodSessionActive} />
+
+      {/* City search — top center */}
+      <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[25] w-[min(100%-2rem,28rem)] flex flex-col items-stretch gap-2 pointer-events-none">
+        <MapSearchBar mapRef={mapRef} onFlyStart={setFlyingToPlace} onFlightComplete={completeSearchFlight} />
+        <FlyingToBanner placeName={flyingToPlace} />
+      </div>
 
       {/* Left column: Control Panel + Status (top) / Stats (bottom) */}
       <div className="absolute top-4 bottom-4 left-4 z-20 w-80 flex flex-col gap-3 pointer-events-none">
@@ -330,6 +454,8 @@ export default function MapView() {
           )}
           <ControlPanel
             selectedPoint={selectedPoint}
+            radiusKm={radiusKm}
+            onRadiusKmChange={setRadiusKm}
             onSimulate={handleSimulate}
             isLoading={isLoading}
           />

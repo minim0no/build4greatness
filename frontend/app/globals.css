@@ -128,3 +128,42 @@ input[type='range']::-webkit-slider-thumb {
     transform: translate3d(-28px, 100vh, 0);
   }
 }
+
+/* City fly-to banner */
+@keyframes flying-plane-bob {
+  0%,
+  100% {
+    transform: translateY(0) rotate(-14deg);
+  }
+  50% {
+    transform: translateY(-4px) rotate(-10deg);
+  }
+}
+
+.flying-plane-icon {
+  animation: flying-plane-bob 1.05s ease-in-out infinite;
+}
+
+@keyframes flying-text-shimmer {
+  0% {
+    background-position: 120% center;
+  }
+  100% {
+    background-position: -120% center;
+  }
+}
+
+.flying-to-shimmer {
+  background: linear-gradient(
+    100deg,
+    rgba(255, 255, 255, 0.92) 0%,
+    rgba(103, 232, 249, 1) 40%,
+    rgba(147, 197, 253, 0.95) 50%,
+    rgba(255, 255, 255, 0.92) 100%
+  );
+  background-size: 220% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: flying-text-shimmer 2s linear infinite;
+}
