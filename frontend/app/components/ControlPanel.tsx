@@ -1,5 +1,6 @@
 'use client';
 
+import Image from 'next/image';
 import { useState } from 'react';
 import type { DisasterType } from '../hooks/useSimulation';
 
@@ -29,6 +30,8 @@ const DIRECTION_PRESETS = [
 
 interface ControlPanelProps {
   selectedPoint: [number, number] | null;
+  radiusKm: number;
+  onRadiusKmChange: (km: number) => void;
   onSimulate: (params: {
     radius_km: number;
     disaster_type: DisasterType;
@@ -41,11 +44,12 @@ interface ControlPanelProps {
 
 export default function ControlPanel({
   selectedPoint,
+  radiusKm,
+  onRadiusKmChange,
   onSimulate,
   isLoading,
 }: ControlPanelProps) {
   const [disasterType, setDisasterType] = useState<DisasterType>('flood');
-  const [radiusKm, setRadiusKm] = useState(3);
   // Flood
   const [rainfallMm, setRainfallMm] = useState(150);
   // Tornado
@@ -74,8 +78,15 @@ export default function ControlPanel({
   return (
     <div className="glass-panel p-4 flex flex-col gap-4">
       <div>
-        <h1 className="text-xl font-bold text-white">Atlas</h1>
-        <p className="text-xs text-white/60 mt-0.5">
+        <Image
+          src="/logo.png"
+          alt="CrisisPath"
+          width={200}
+          height={48}
+          priority
+          className="h-10 w-auto max-w-full object-contain object-left"
+        />
+        <p className="text-xs text-white/60 mt-2">
           AI-powered disaster risk analysis & response
         </p>
       </div>
@@ -128,7 +139,7 @@ export default function ControlPanel({
           max={10}
           step={0.5}
           value={radiusKm}
-          onChange={(e) => setRadiusKm(Number(e.target.value))}
+          onChange={(e) => onRadiusKmChange(Number(e.target.value))}
           className="w-full accent-blue-500"
         />
         <div className="flex justify-between text-[10px] text-white/50 mt-0.5">
