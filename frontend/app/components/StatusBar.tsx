@@ -1,32 +1,43 @@
 'use client';
 
-import type { SimulationStatus } from '../hooks/useSimulation';
+import type { SimulationStatus, DisasterType } from '../hooks/useSimulation';
 
 interface StatusBarProps {
   status: SimulationStatus;
   message: string;
+  disasterType: DisasterType;
 }
 
-const stages: { key: SimulationStatus; label: string }[] = [
-  { key: 'fetching_flood_data', label: 'FEMA Data' },
+const FLOOD_STAGES: { key: SimulationStatus; label: string }[] = [
+  { key: 'fetching_hazard_data', label: 'FEMA Data' },
   { key: 'fetching_infrastructure', label: 'Infrastructure' },
   { key: 'analyzing', label: 'AI Analysis' },
   { key: 'planning', label: 'Response Plan' },
   { key: 'complete', label: 'Complete' },
 ];
 
-const stageOrder: Record<string, number> = {};
-stages.forEach((s, i) => {
-  stageOrder[s.key] = i;
-});
+const TORNADO_STAGES: { key: SimulationStatus; label: string }[] = [
+  { key: 'fetching_hazard_data', label: 'Tornado Path' },
+  { key: 'fetching_infrastructure', label: 'Infrastructure' },
+  { key: 'analyzing', label: 'AI Analysis' },
+  { key: 'planning', label: 'Response Plan' },
+  { key: 'complete', label: 'Complete' },
+];
 
-export default function StatusBar({ status, message }: StatusBarProps) {
+export default function StatusBar({ status, message, disasterType }: StatusBarProps) {
   if (status === 'idle') return null;
+
+  const stages = disasterType === 'tornado' ? TORNADO_STAGES : FLOOD_STAGES;
+
+  const stageOrder: Record<string, number> = {};
+  stages.forEach((s, i) => {
+    stageOrder[s.key] = i;
+  });
 
   const currentIndex = stageOrder[status] ?? -1;
 
   return (
-    <div className="px-4 py-3 border-b border-zinc-700">
+    <div className="glass-panel px-4 py-3">
       <div className="flex items-center gap-1.5 mb-2">
         {stages.map((stage, i) => {
           const isComplete = i < currentIndex || status === 'complete';
@@ -37,17 +48,17 @@ export default function StatusBar({ status, message }: StatusBarProps) {
               <div
                 className={`h-1.5 flex-1 rounded-full transition-colors ${
                   isComplete
-                    ? 'bg-blue-500'
+                    ? disasterType === 'tornado' ? 'bg-amber-500' : 'bg-blue-500'
                     : isCurrent
-                      ? 'bg-blue-400 animate-pulse'
-                      : 'bg-zinc-700'
+                      ? disasterType === 'tornado' ? 'bg-amber-400 animate-pulse' : 'bg-blue-400 animate-pulse'
+                      : 'bg-white/10'
                 }`}
               />
             </div>
           );
         })}
       </div>
-      <p className="text-xs text-zinc-400">
+      <p className="text-xs text-white/60">
         {status === 'error' ? (
           <span className="text-red-400">{message}</span>
         ) : (

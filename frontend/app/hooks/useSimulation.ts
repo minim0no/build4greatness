@@ -4,10 +4,12 @@ import { useCallback, useRef, useState } from 'react';
 
 const WS_URL = process.env.NEXT_PUBLIC_API_URL?.replace('http', 'ws') || 'ws://localhost:8000';
 
+export type DisasterType = 'flood' | 'tornado';
+
 export type SimulationStatus =
   | 'idle'
   | 'connecting'
-  | 'fetching_flood_data'
+  | 'fetching_hazard_data'
   | 'fetching_infrastructure'
   | 'analyzing'
   | 'planning'
@@ -15,20 +17,37 @@ export type SimulationStatus =
   | 'error';
 
 export interface FloodStats {
+  search_area_km2: number;
   total_area_km2: number;
   high_risk_area_km2: number;
+  flood_coverage_pct: number;
   zone_counts: Record<string, number>;
   risk_summary: string;
   num_flood_zones: number;
 }
 
+export interface TornadoStats {
+  ef_scale: number;
+  path_length_km: number;
+  path_width_m: number;
+  affected_area_km2: number;
+  risk_summary: string;
+}
+
+export interface AnalysisCircle {
+  center: [number, number];
+  radius_km: number;
+}
+
 export interface SimulationState {
+  disasterType: DisasterType;
   status: SimulationStatus;
   statusMessage: string;
-  floodGeoJSON: GeoJSON.FeatureCollection | null;
+  hazardGeoJSON: GeoJSON.FeatureCollection | null;
   blockedRoadsGeoJSON: GeoJSON.FeatureCollection | null;
-  stats: FloodStats | null;
+  stats: FloodStats | TornadoStats | null;
   bbox: number[] | null;
+  circle: AnalysisCircle | null;
   infrastructure: Record<string, unknown[]> | null;
   agent1Text: string;
   agent1Data: Record<string, unknown> | null;
@@ -39,12 +58,14 @@ export interface SimulationState {
 }
 
 const initialState: SimulationState = {
+  disasterType: 'flood',
   status: 'idle',
   statusMessage: '',
-  floodGeoJSON: null,
+  hazardGeoJSON: null,
   blockedRoadsGeoJSON: null,
   stats: null,
   bbox: null,
+  circle: null,
   infrastructure: null,
   agent1Text: '',
   agent1Data: null,
@@ -63,10 +84,20 @@ export function useSimulation() {
       center_lng: number;
       center_lat: number;
       radius_km: number;
-      rainfall_mm: number;
+      disaster_type: DisasterType;
+      // Flood params
+      rainfall_mm?: number;
+      // Tornado params
+      ef_scale?: number;
+      direction_deg?: number;
     }) => {
       // Reset state
-      setState({ ...initialState, status: 'connecting', statusMessage: 'Connecting...' });
+      setState({
+        ...initialState,
+        disasterType: params.disaster_type,
+        status: 'connecting',
+        statusMessage: 'Connecting...',
+      });
 
       // Close existing connection
       if (wsRef.current) {
@@ -88,7 +119,13 @@ export function useSimulation() {
             setState((prev) => {
               let status: SimulationStatus = prev.status;
               const message = msg.message as string;
-              if (message.includes('FEMA') || message.includes('flood zone')) status = 'fetching_flood_data';
+              if (
+                message.includes('FEMA') ||
+                message.includes('flood zone') ||
+                message.includes('tornado path') ||
+                message.includes('Simulating')
+              )
+                status = 'fetching_hazard_data';
               else if (message.includes('infrastructure')) status = 'fetching_infrastructure';
               else if (message.includes('analyzing') || message.includes('impact')) status = 'analyzing';
               else if (message.includes('response plan') || message.includes('generating')) status = 'planning';
@@ -96,12 +133,13 @@ export function useSimulation() {
             });
             break;
 
-          case 'flood_result':
+          case 'hazard_result':
             setState((prev) => ({
               ...prev,
-              floodGeoJSON: msg.geojson,
+              hazardGeoJSON: msg.geojson,
               stats: msg.stats,
               bbox: msg.bbox,
+              circle: msg.circle || null,
             }));
             break;
 

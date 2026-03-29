@@ -1,7 +1,7 @@
 @import "tailwindcss";
 
 :root {
-  --background: #09090b;
+  --background: #0b0b19;
   --foreground: #fafafa;
 }
 
@@ -16,6 +16,7 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-sans), system-ui, sans-serif;
+  overscroll-behavior: none;
 }
 
 /* Scrollbar styling */
@@ -24,23 +25,23 @@ body {
 }
 
 ::-webkit-scrollbar-track {
-  background: #18181b;
+  background: rgba(255, 255, 255, 0.05);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #3f3f46;
+  background: rgba(255, 255, 255, 0.15);
   border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #52525b;
+  background: rgba(255, 255, 255, 0.25);
 }
 
 /* Range input styling */
 input[type='range'] {
   height: 4px;
   border-radius: 2px;
-  background: #27272a;
+  background: rgba(255, 255, 255, 0.1);
   appearance: none;
 }
 
@@ -53,18 +54,20 @@ input[type='range']::-webkit-slider-thumb {
   cursor: pointer;
 }
 
-/* Mapbox overrides */
+/* Mapbox overrides — glass style */
 .mapboxgl-ctrl-group {
-  background: #18181b !important;
-  border: 1px solid #3f3f46 !important;
+  background: rgba(0, 0, 0, 0.4) !important;
+  backdrop-filter: blur(12px) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  border-radius: 0.75rem !important;
 }
 
 .mapboxgl-ctrl-group button {
-  border-color: #3f3f46 !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
 }
 
 .mapboxgl-ctrl-group button + button {
-  border-top-color: #3f3f46 !important;
+  border-top-color: rgba(255, 255, 255, 0.1) !important;
 }
 
 /* Pulse animation for active sim */
@@ -75,4 +78,14 @@ input[type='range']::-webkit-slider-thumb {
 
 .animate-pulse-blue {
   animation: pulse-blue 2s ease-in-out infinite;
+}
+
+/* Glass panel utility */
+.glass-panel {
+  background: rgba(10, 10, 30, 0.85);
+  backdrop-filter: blur(40px) saturate(1.2);
+  -webkit-backdrop-filter: blur(40px) saturate(1.2);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 0.75rem;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.06) inset;
 }

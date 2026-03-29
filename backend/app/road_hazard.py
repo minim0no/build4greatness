@@ -1,7 +1,11 @@
 """Spatial intersection of roads with flood zones to find blocked roads."""
 
+import logging
+
 from shapely.geometry import LineString, shape, MultiPolygon
 from shapely.ops import unary_union
+
+logger = logging.getLogger(__name__)
 
 
 def find_blocked_roads(
@@ -25,6 +29,7 @@ def find_blocked_roads(
             if geom.is_valid:
                 flood_polys_by_band[band].append(geom)
         except Exception:
+            logger.warning("Skipping invalid flood polygon (band=%s)", band)
             continue
 
     # Merge all flood polygons into one for intersection test
@@ -38,6 +43,7 @@ def find_blocked_roads(
     try:
         flood_union = unary_union(all_flood_polys)
     except Exception:
+        logger.exception("Failed to union flood polygons")
         return [], {"blocked": [], "partial": [], "clear": [r["name"] for r in roads]}
 
     # Build band unions for determining worst flood band on a road
@@ -47,7 +53,7 @@ def find_blocked_roads(
             try:
                 band_unions[band] = unary_union(flood_polys_by_band[band])
             except Exception:
-                pass
+                logger.warning("Failed to union %s band polygons", band)
 
     blocked_features = []
     summary = {"blocked": [], "partial": [], "clear": []}
@@ -61,6 +67,7 @@ def find_blocked_roads(
         try:
             road_line = LineString(coords)  # coords are [lng, lat]
         except Exception:
+            logger.warning("Invalid road geometry for %s", road.get("name", "?"))
             summary["clear"].append(road["name"])
             continue
 
@@ -71,6 +78,7 @@ def find_blocked_roads(
         try:
             intersection = road_line.intersection(flood_union)
         except Exception:
+            logger.warning("Intersection failed for road %s", road.get("name", "?"))
             summary["clear"].append(road["name"])
             continue
 
@@ -100,6 +108,7 @@ def find_blocked_roads(
                     if band_priority[band] > band_priority[worst_band]:
                         worst_band = band
             except Exception:
+                logger.warning("Band intersect check failed for %s/%s", road.get("name", "?"), band)
                 continue
 
         # Build GeoJSON feature for the flooded portion of the road
