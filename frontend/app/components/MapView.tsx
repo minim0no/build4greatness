@@ -88,25 +88,25 @@ const INFRA_EXTRUSION_HEIGHT_M: Record<string, number> = {
     disaster_infra: 26,
 };
 
-export default function MapView() {
+interface MapViewProps {
+    onReady?: () => void;
+}
+
+export default function MapView({ onReady }: MapViewProps) {
     const mapRef = useRef<MapRef>(null);
+    const hasReportedReadyRef = useRef(false);
     const [selectedPoint, setSelectedPoint] = useState<[number, number] | null>(
         null,
     );
     const [radiusKm, setRadiusKm] = useState(3);
     const [is3D, setIs3D] = useState(false);
-    const [isDayMode, setIsDayMode] = useState(true);
+    const [isDayMode, setIsDayMode] = useState(false);
     const [flyingToPlace, setFlyingToPlace] = useState<string | null>(null);
     const [lastRunMeta, setLastRunMeta] = useState<LastRunMeta | null>(null);
     const [pdfExporting, setPdfExporting] = useState(false);
     const sim = useSimulation();
 
     const isLoading = !["idle", "complete", "error"].includes(sim.status);
-
-    const floodSessionActive =
-        sim.disasterType === "flood" &&
-        sim.status !== "idle" &&
-        sim.status !== "error";
 
     const floodSessionActive =
         sim.disasterType === "flood" &&
@@ -495,8 +495,15 @@ export default function MapView() {
                         (map as any).setConfigProperty(
                             "basemap",
                             "lightPreset",
-                            "day",
+                            "night",
                         );
+                        map.once("idle", () => {
+                            if (hasReportedReadyRef.current) return;
+                            hasReportedReadyRef.current = true;
+                            window.setTimeout(() => {
+                                onReady?.();
+                            }, 120);
+                        });
                     }}
                 >
                     {/* Scan radius preview (replaces pin) */}
