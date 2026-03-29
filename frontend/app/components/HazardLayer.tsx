@@ -36,6 +36,20 @@ const TORNADO_OUTLINE_COLORS: [string, string][] = [
   ['extreme', '#fca5a5'],
 ];
 
+const ASTEROID_FILL_COLORS: [string, string][] = [
+  ['low', '#fbbf24'],
+  ['medium', '#f97316'],
+  ['high', '#ef4444'],
+  ['extreme', '#dc2626'],
+];
+
+const ASTEROID_OUTLINE_COLORS: [string, string][] = [
+  ['low', '#fcd34d'],
+  ['medium', '#fb923c'],
+  ['high', '#fca5a5'],
+  ['extreme', '#fecaca'],
+];
+
 function buildMatchExpr(colors: [string, string][], fallback: string): unknown[] {
   const expr: unknown[] = ['match', ['get', 'band']];
   for (const [band, color] of colors) {
@@ -48,10 +62,10 @@ function buildMatchExpr(colors: [string, string][], fallback: string): unknown[]
 export default function HazardLayer({ geojson, disasterType }: HazardLayerProps) {
   if (!geojson || geojson.features.length === 0) return null;
 
-  const fillColors = disasterType === 'tornado' ? TORNADO_FILL_COLORS : FLOOD_FILL_COLORS;
-  const outlineColors = disasterType === 'tornado' ? TORNADO_OUTLINE_COLORS : FLOOD_OUTLINE_COLORS;
-  const defaultFill = disasterType === 'tornado' ? '#c084fc' : '#22d3ee';
-  const defaultOutline = disasterType === 'tornado' ? '#d8b4fe' : '#67e8f9';
+  const fillColors = disasterType === 'asteroid' ? ASTEROID_FILL_COLORS : disasterType === 'tornado' ? TORNADO_FILL_COLORS : FLOOD_FILL_COLORS;
+  const outlineColors = disasterType === 'asteroid' ? ASTEROID_OUTLINE_COLORS : disasterType === 'tornado' ? TORNADO_OUTLINE_COLORS : FLOOD_OUTLINE_COLORS;
+  const defaultFill = disasterType === 'asteroid' ? '#f97316' : disasterType === 'tornado' ? '#c084fc' : '#22d3ee';
+  const defaultOutline = disasterType === 'asteroid' ? '#fb923c' : disasterType === 'tornado' ? '#d8b4fe' : '#67e8f9';
 
   return (
     <Source id="hazard-source" type="geojson" data={geojson}>

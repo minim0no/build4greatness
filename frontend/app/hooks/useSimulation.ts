@@ -4,7 +4,7 @@ import { useCallback, useRef, useState } from 'react';
 
 const WS_URL = process.env.NEXT_PUBLIC_API_URL?.replace('http', 'ws') || 'ws://localhost:8000';
 
-export type DisasterType = 'flood' | 'tornado';
+export type DisasterType = 'flood' | 'tornado' | 'asteroid';
 
 export type SimulationStatus =
   | 'idle'
@@ -34,6 +34,15 @@ export interface TornadoStats {
   risk_summary: string;
 }
 
+export interface AsteroidStats {
+  mass_kg: number;
+  energy_megatons: number;
+  crater_diameter_km: number;
+  max_damage_radius_km: number;
+  affected_area_km2: number;
+  risk_summary: string;
+}
+
 export interface AnalysisCircle {
   center: [number, number];
   radius_km: number;
@@ -45,7 +54,7 @@ export interface SimulationState {
   statusMessage: string;
   hazardGeoJSON: GeoJSON.FeatureCollection | null;
   blockedRoadsGeoJSON: GeoJSON.FeatureCollection | null;
-  stats: FloodStats | TornadoStats | null;
+  stats: FloodStats | TornadoStats | AsteroidStats | null;
   bbox: number[] | null;
   circle: AnalysisCircle | null;
   infrastructure: Record<string, unknown[]> | null;
@@ -90,6 +99,8 @@ export function useSimulation() {
       // Tornado params
       ef_scale?: number;
       direction_deg?: number;
+      // Asteroid params
+      mass_kg?: number;
     }) => {
       // Reset state
       setState({
@@ -123,6 +134,7 @@ export function useSimulation() {
                 message.includes('FEMA') ||
                 message.includes('flood zone') ||
                 message.includes('tornado path') ||
+                message.includes('asteroid impact') ||
                 message.includes('Simulating')
               )
                 status = 'fetching_hazard_data';

@@ -115,11 +115,11 @@ export default function AnalysisPanel({
                   </div>
                 )}
 
-                {/* Streaming text */}
+                {/* Loading indicator while streaming */}
                 {!agent1Data && agent1Text && (
-                  <div className="whitespace-pre-wrap font-mono text-xs text-white/50">
-                    {agent1Text}
-                    {isStreaming && <span className="animate-pulse">|</span>}
+                  <div className="flex items-center gap-2 text-xs text-white/50">
+                    <span className="w-3 h-3 border-2 border-white/20 border-t-white/60 rounded-full animate-spin" />
+                    Analyzing...
                   </div>
                 )}
               </div>
@@ -177,11 +177,11 @@ export default function AnalysisPanel({
                   </div>
                 )}
 
-                {/* Streaming text */}
+                {/* Loading indicator while streaming */}
                 {!agent2Data && agent2Text && (
-                  <div className="whitespace-pre-wrap font-mono text-xs text-white/50">
-                    {agent2Text}
-                    {isStreaming && <span className="animate-pulse">|</span>}
+                  <div className="flex items-center gap-2 text-xs text-white/50">
+                    <span className="w-3 h-3 border-2 border-white/20 border-t-white/60 rounded-full animate-spin" />
+                    Generating plan...
                   </div>
                 )}
 

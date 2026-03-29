@@ -28,6 +28,14 @@ const DIRECTION_PRESETS = [
   { label: 'SW', deg: 225 },
 ];
 
+const MASS_PRESETS = [
+  { label: 'Meteorite', kg: 1e3, desc: 'Small meteorite (1 tonne) — localized damage, small crater' },
+  { label: 'Chelyabinsk', kg: 1.2e7, desc: 'Chelyabinsk-class (12,000 tonnes) — airburst, shattered windows across city' },
+  { label: 'Tunguska', kg: 1e9, desc: 'Tunguska-class (1M tonnes) — flattens forests, city-destroying airburst' },
+  { label: 'City Killer', kg: 1e10, desc: 'City killer (10M tonnes) — regional devastation, firestorm' },
+  { label: 'Chicxulub', kg: 1e14, desc: 'Chicxulub-class — extinction-level event, global devastation' },
+];
+
 interface ControlPanelProps {
   selectedPoint: [number, number] | null;
   radiusKm: number;
@@ -38,6 +46,7 @@ interface ControlPanelProps {
     rainfall_mm?: number;
     ef_scale?: number;
     direction_deg?: number;
+    mass_kg?: number;
   }) => void;
   isLoading: boolean;
 }
@@ -55,12 +64,16 @@ export default function ControlPanel({
   // Tornado
   const [efScale, setEfScale] = useState(3);
   const [directionDeg, setDirectionDeg] = useState(45);
+  // Asteroid
+  const [massKg, setMassKg] = useState(1.2e7);
 
   const handleSubmit = () => {
     if (disasterType === 'flood') {
       onSimulate({ radius_km: radiusKm, disaster_type: 'flood', rainfall_mm: rainfallMm });
-    } else {
+    } else if (disasterType === 'tornado') {
       onSimulate({ radius_km: radiusKm, disaster_type: 'tornado', ef_scale: efScale, direction_deg: directionDeg });
+    } else {
+      onSimulate({ radius_km: radiusKm, disaster_type: 'asteroid', mass_kg: massKg });
     }
   };
 
@@ -97,19 +110,22 @@ export default function ControlPanel({
           Disaster Type
         </h2>
         <div className="flex gap-1.5">
-          {(['flood', 'tornado'] as DisasterType[]).map((type) => (
-            <button
-              key={type}
-              onClick={() => setDisasterType(type)}
-              className={`flex-1 text-xs py-1.5 px-2 rounded transition-colors capitalize ${
-                disasterType === type
-                  ? type === 'flood' ? 'bg-blue-600 text-white' : 'bg-amber-600 text-white'
-                  : 'bg-white/10 text-white/80 hover:bg-white/20'
-              }`}
-            >
-              {type}
-            </button>
-          ))}
+          {(['flood', 'tornado', 'asteroid'] as DisasterType[]).map((type) => {
+            const activeColor = type === 'flood' ? 'bg-blue-600' : type === 'tornado' ? 'bg-amber-600' : 'bg-orange-600';
+            return (
+              <button
+                key={type}
+                onClick={() => setDisasterType(type)}
+                className={`flex-1 text-xs py-1.5 px-2 rounded transition-colors capitalize ${
+                  disasterType === type
+                    ? `${activeColor} text-white`
+                    : 'bg-white/10 text-white/80 hover:bg-white/20'
+                }`}
+              >
+                {type}
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -128,28 +144,72 @@ export default function ControlPanel({
         )}
       </div>
 
-      {/* Scan Radius */}
-      <div className="border-t border-white/10 pt-3">
-        <label className="block text-xs font-semibold text-white/80 uppercase tracking-wide mb-2">
-          Scan Radius: {radiusKm} km
-        </label>
-        <input
-          type="range"
-          min={1}
-          max={10}
-          step={0.5}
-          value={radiusKm}
-          onChange={(e) => onRadiusKmChange(Number(e.target.value))}
-          className="w-full accent-blue-500"
-        />
-        <div className="flex justify-between text-[10px] text-white/50 mt-0.5">
-          <span>1 km</span>
-          <span>10 km</span>
+      {/* Scan Radius — hidden for asteroid (damage radius is the scan area) */}
+      {disasterType !== 'asteroid' && (
+        <div className="border-t border-white/10 pt-3">
+          <label className="block text-xs font-semibold text-white/80 uppercase tracking-wide mb-2">
+            Scan Radius: {radiusKm} km
+          </label>
+          <input
+            type="range"
+            min={1}
+            max={10}
+            step={0.5}
+            value={radiusKm}
+            onChange={(e) => onRadiusKmChange(Number(e.target.value))}
+            className="w-full accent-blue-500"
+          />
+          <div className="flex justify-between text-[10px] text-white/50 mt-0.5">
+            <span>1 km</span>
+            <span>10 km</span>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Disaster-specific controls */}
-      {disasterType === 'flood' ? (
+      {disasterType === 'asteroid' ? (
+        <>
+          {/* Mass selector */}
+          <div className="border-t border-white/10 pt-3">
+            <label className="block text-xs font-semibold text-white/80 uppercase tracking-wide mb-2">
+              Impactor Mass: {massKg >= 1e9 ? `${(massKg / 1e9).toFixed(1)}B kg` : massKg >= 1e6 ? `${(massKg / 1e6).toFixed(1)}M kg` : `${(massKg / 1e3).toFixed(0)}K kg`}
+            </label>
+            <input
+              type="range"
+              min={3}
+              max={14}
+              step={0.5}
+              value={Math.log10(massKg)}
+              onChange={(e) => setMassKg(Math.pow(10, Number(e.target.value)))}
+              className="w-full accent-orange-500"
+            />
+            <div className="flex justify-between text-[10px] text-white/50 mt-0.5">
+              <span>1 tonne</span>
+              <span>100T tonnes</span>
+            </div>
+            <p className="text-[11px] text-white/60 mt-1.5">
+              {MASS_PRESETS.find((p) => Math.abs(Math.log10(p.kg) - Math.log10(massKg)) < 0.5)?.desc || 'Custom impactor mass'}
+            </p>
+          </div>
+
+          {/* Mass presets */}
+          <div className="grid grid-cols-3 gap-1.5">
+            {MASS_PRESETS.map((preset) => (
+              <button
+                key={preset.label}
+                onClick={() => setMassKg(preset.kg)}
+                className={`text-[11px] py-1.5 px-2 rounded transition-colors ${
+                  Math.abs(Math.log10(massKg) - Math.log10(preset.kg)) < 0.3
+                    ? 'bg-orange-600 text-white'
+                    : 'bg-white/10 text-white/80 hover:bg-white/20'
+                }`}
+              >
+                {preset.label}
+              </button>
+            ))}
+          </div>
+        </>
+      ) : disasterType === 'flood' ? (
         <>
           {/* Rainfall / Storm Intensity */}
           <div className="border-t border-white/10 pt-3">
@@ -261,7 +321,9 @@ export default function ControlPanel({
         className={`w-full ${
           disasterType === 'tornado'
             ? 'bg-amber-600 hover:bg-amber-500'
-            : 'bg-blue-600 hover:bg-blue-500'
+            : disasterType === 'asteroid'
+              ? 'bg-orange-600 hover:bg-orange-500'
+              : 'bg-blue-600 hover:bg-blue-500'
         } disabled:bg-white/10 disabled:text-white/40 text-white font-medium py-2.5 px-4 rounded-lg transition-colors text-sm`}
       >
         {isLoading ? (
@@ -271,8 +333,10 @@ export default function ControlPanel({
           </span>
         ) : disasterType === 'flood' ? (
           'Analyze Flood Risk'
-        ) : (
+        ) : disasterType === 'tornado' ? (
           'Analyze Tornado Risk'
+        ) : (
+          'Simulate Impact'
         )}
       </button>
     </div>
